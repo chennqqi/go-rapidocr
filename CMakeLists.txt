@@ -46,16 +46,17 @@ elseif (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/onnxruntime-win-x64-1.20.1)
     set(ORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/deps/onnxruntime-win-x64-1.20.1)
     set(ORT_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/deps/ort-compat)
     if (MINGW)
-        # MinGW cannot link MSVC import .lib; generate a .dll.a import library.
-        find_program(DLLTOOL dlltool HINTS ${CMAKE_CXX_COMPILER_ID} PATHS ENV PATH)
-        if (NOT DLLTOOL)
-            set(DLLTOOL dlltool)
-        endif ()
+        # MinGW cannot link MSVC import .lib; generate a .dll.a import
+        # library. The import records a versioned dll name
+        # (onnxruntime-1.20.dll) so the engine never binds to an older
+        # onnxruntime.dll already installed on the system (e.g. System32).
+        set(ORT_DLL_NAME onnxruntime-1.20.dll)
         set(ORT_IMPLIB ${CMAKE_BINARY_DIR}/libonnxruntime.dll.a)
         if (NOT EXISTS ${ORT_IMPLIB})
+            find_program(DLLTOOL dlltool)
             execute_process(COMMAND ${DLLTOOL}
                 -l ${ORT_IMPLIB}
-                -D ${ORT_DIR}/lib/onnxruntime.dll
+                -D ${ORT_DLL_NAME}
                 -d ${CMAKE_CURRENT_SOURCE_DIR}/cmake/onnxruntime.def)
         endif ()
         set(ORT_LIBS ${ORT_IMPLIB})

@@ -32,6 +32,9 @@ cmake -B build-clib -G "MinGW Makefiles" \
     -DOpenCV_DIR="$MSYS2_UCRT64/lib/cmake/opencv5"
 cmake --build build-clib -j"$(nproc)"
 
-# Co-locate onnxruntime.dll so the loader resolves it next to the engine dll.
-cp "$ORT_DIR"/lib/onnxruntime*.dll build-clib/
+# Co-locate onnxruntime dlls next to the engine dll. The engine imports the
+# versioned name onnxruntime-1.20.dll (see CMakeLists ORT_DLL_NAME) so stale
+# system copies named onnxruntime.dll are never bound.
+cp "$ORT_DIR"/lib/onnxruntime.dll build-clib/onnxruntime-1.20.dll
+cp "$ORT_DIR"/lib/onnxruntime_providers_shared.dll build-clib/ 2>/dev/null || true
 echo "Built: build-clib/libRapidOcrOnnx.dll"

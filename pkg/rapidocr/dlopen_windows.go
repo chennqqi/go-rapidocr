@@ -28,7 +28,7 @@ var (
 // siblingDeps are loaded by absolute path before the engine library itself:
 // once a module name is in the loaded-module table, the loader binds the
 // engine's imports to it instead of searching System32.
-var siblingDeps = []string{"onnxruntime.dll"}
+var siblingDeps = []string{"onnxruntime.dll", "onnxruntime-1.20.dll"}
 
 // dlopen loads a shared library and returns its handle. Sibling dependency
 // libraries next to path are preloaded so a local build is not shadowed by

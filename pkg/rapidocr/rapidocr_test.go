@@ -45,8 +45,10 @@ func testConfig(t *testing.T) *Config {
 	return cfg
 }
 
-func TestPureGoDetectBytes(t *testing.T) {
-	cfg := testConfig(t)
+// runDetect exercises an engine on the shared test image and returns the
+// result for per-backend assertions.
+func runDetect(t *testing.T, cfg *Config) *Result {
+	t.Helper()
 	engine, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -66,6 +68,13 @@ func TestPureGoDetectBytes(t *testing.T) {
 	if len(result.TextBlocks) == 0 {
 		t.Fatal("expected text blocks, got none")
 	}
+	return result
+}
+
+func TestPureGoDetectBytes(t *testing.T) {
+	cfg := testConfig(t)
+	result := runDetect(t, cfg)
+
 	t.Logf("got %d blocks", len(result.TextBlocks))
 	structured := false
 	for i, b := range result.TextBlocks {

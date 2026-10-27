@@ -44,12 +44,25 @@ plus the official `onnxruntime-win-x64-*.zip` unpacked to `deps/`.
 to `opencv2/geometry/2d.hpp` — `include/cv_compat.h` is force-included when
 `OpenCV_VERSION >= 5`.
 
-Runtime dependencies of the MinGW dll: `onnxruntime.dll`, `libopencv_*-500.dll`,
+Runtime dependencies of the MinGW dll: `onnxruntime-1.20.dll`,
+`onnxruntime_providers_shared.dll`, `libopencv_*-500.dll`,
 `libstdc++-6.dll`, `libgcc_s_seh-1.dll` (+ transitive codec dlls like
 libjpeg/libpng/libwebp from msys2). `dlopen_windows.go` registers the
 library's directory via `AddDllDirectory` and preloads a sibling
-`onnxruntime.dll`, so dependencies resolve next to the engine dll and older
-System32 copies (e.g. onnxruntime 1.17) are not picked up.
+`onnxruntime.dll`/`onnxruntime-1.20.dll`, so dependencies resolve next to
+the engine dll and older System32 copies (e.g. onnxruntime 1.17) are not
+picked up. The import lib deliberately references the *versioned* name
+`onnxruntime-1.20.dll` — a cgo-linked exe cannot preload dependencies
+before its imports resolve, so the unique name is required there too.
+
+### cgo backend on Windows
+
+`CGO_ENABLED=1 go test` links `lib/windows-x64/*.dll.a` import libs and
+needs `lib/windows-x64` + `C:\msys64\ucrt64\bin` on PATH for `gcc` and the
+runtime dlls. `TestCGODetectBytes` verifies the real cgo path end-to-end.
+Note: `OCR_INPUT`/`OCR_PARAM` structs that hold Go pointers must be
+allocated via `C.malloc` — passing a Go struct containing a Go pointer
+trips the cgo pointer checker ("Go pointer to unpinned Go pointer").
 
 ## Verification
 
