@@ -32,6 +32,25 @@ backend detects missing `OcrDetectInput` and falls back to a temp-file + plain-t
 path (no boxes/scores). Building our own CLIB from `rapidocr-onnx` main restores
 full structured output.
 
+### MinGW shared build (verified)
+
+`scripts/build_clib_mingw.sh` builds `libRapidOcrOnnx.dll` on Windows with
+MSYS2 ucrt64: `pacman -S mingw-w64-ucrt-x86_64-toolchain -cmake -opencv`,
+plus the official `onnxruntime-win-x64-*.zip` unpacked to `deps/`.
+`deps/ort-compat/` remaps the flat onnxruntime headers to upstream's nested
+`onnxruntime/core/session/` include layout. MinGW cannot link the MSVC
+`onnxruntime.lib`; `dlltool` generates `libonnxruntime.dll.a` from
+`cmake/onnxruntime.def`. OpenCV 5 moved `minAreaRect`/`getPerspectiveTransform`
+to `opencv2/geometry/2d.hpp` — `include/cv_compat.h` is force-included when
+`OpenCV_VERSION >= 5`.
+
+Runtime dependencies of the MinGW dll: `onnxruntime.dll`, `libopencv_*-500.dll`,
+`libstdc++-6.dll`, `libgcc_s_seh-1.dll` (+ transitive codec dlls like
+libjpeg/libpng/libwebp from msys2). `dlopen_windows.go` registers the
+library's directory via `AddDllDirectory` and preloads a sibling
+`onnxruntime.dll`, so dependencies resolve next to the engine dll and older
+System32 copies (e.g. onnxruntime 1.17) are not picked up.
+
 ## Verification
 
 ```bash

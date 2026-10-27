@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -23,9 +24,18 @@ func testConfig(t *testing.T) *Config {
 	cfg.DetModel = "ch_PP-OCRv4_det_mobile.onnx"
 	cfg.ClsModel = "ch_ppocr_mobile_v2.0_cls_mobile.onnx"
 	cfg.RecModel = "ch_PP-OCRv4_rec_mobile.onnx"
-	cfg.LibraryPath = filepath.Join(root, "lib", "windows-x64", "RapidOcrOnnx.dll")
-	if _, err := os.Stat(cfg.LibraryPath); err != nil {
-		t.Skipf("shared library not present: %v", err)
+	// Prefer the locally built CLIB (full OcrDetectInput API); fall back to
+	// the upstream prebuilt CLIB (legacy text-only API).
+	libDir := filepath.Join(root, "lib", "windows-x64")
+	for _, name := range []string{"libRapidOcrOnnx.dll", "RapidOcrOnnx.dll"} {
+		p := filepath.Join(libDir, name)
+		if _, err := os.Stat(p); err == nil {
+			cfg.LibraryPath = p
+			break
+		}
+	}
+	if len(cfg.LibraryPath) == 0 {
+		t.Skipf("shared library not present in %s", libDir)
 	}
 	for _, m := range []string{cfg.DetModel, cfg.ClsModel, cfg.RecModel, cfg.KeysFile} {
 		if _, err := os.Stat(filepath.Join(cfg.ModelDir, m)); err != nil {
@@ -57,8 +67,17 @@ func TestPureGoDetectBytes(t *testing.T) {
 		t.Fatal("expected text blocks, got none")
 	}
 	t.Logf("got %d blocks", len(result.TextBlocks))
+	structured := false
 	for i, b := range result.TextBlocks {
 		t.Logf("[%d] %q", i, b.Text)
+		if b.BoxScore > 0 && b.Box[2].X > b.Box[0].X {
+			structured = true
+		}
+	}
+	// The upstream prebuilt CLIB (legacy OcrDetect API) returns text only;
+	// a locally built CLIB must provide boxes and scores.
+	if strings.HasSuffix(cfg.LibraryPath, "libRapidOcrOnnx.dll") && !structured {
+		t.Error("structured CLIB loaded but no box/score data returned")
 	}
 }
 

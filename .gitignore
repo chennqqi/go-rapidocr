@@ -6,7 +6,7 @@
 
 # Downloaded artifacts (models/libs are fetched, not committed by default)
 /models/*.onnx
-/lib/*/RapidOcrOnnx.dll
+/lib/*/*.dll
 /lib/*/libRapidOcrOnnx.so
 /lib/*/libRapidOcrOnnx.dylib
 
