@@ -3,6 +3,16 @@ name: build-libs
 # Manual pipeline producing the per-platform CLIB shared libraries under
 # lib/<os>-<arch>/. Artifacts only — nothing is committed back.
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-libs.yml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'docker/**'
+      - 'scripts/**'
+      - 'src/**'
+      - 'include/**'
   workflow_dispatch:
 
 env:
