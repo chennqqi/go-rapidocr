@@ -36,7 +36,7 @@ jobs:
         with:
           submodules: true
       - name: Fetch static dep packs
-        run: ./scripts/fetch_static_deps.sh x64
+        run: bash scripts/fetch_static_deps.sh x64
       - name: Build libRapidOcrOnnx.so (glibc 2.27 floor)
         run: |
           docker build --build-arg BASE_IMAGE=quay.io/pypa/manylinux_2_28_x86_64 \
@@ -61,7 +61,7 @@ jobs:
         with:
           submodules: true
       - name: Fetch static dep packs
-        run: ./scripts/fetch_static_deps.sh arm64
+        run: bash scripts/fetch_static_deps.sh arm64
       - name: Build libRapidOcrOnnx.so (glibc 2.28 floor)
         run: |
           docker build --build-arg BASE_IMAGE=quay.io/pypa/manylinux_2_28_aarch64 \
@@ -101,7 +101,7 @@ jobs:
             "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip"
           unzip -q deps/ort-win.zip -d deps/
       - name: Build libRapidOcrOnnx.dll
-        run: ./scripts/build_clib_mingw.sh
+        run: bash scripts/build_clib_mingw.sh
       - name: Collect runtime deps
         run: |
           mkdir -p out-windows-x64

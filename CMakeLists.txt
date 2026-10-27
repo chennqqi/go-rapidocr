@@ -137,6 +137,16 @@ find_package(OpenCV REQUIRED)
 # --- Sources: upstream engine + our wrapper. Files guarded by
 # __JNI__/__EXEC__ (main.cpp, getopt.cpp, OcrLiteJni.cpp) compile to nothing
 # under __CLIB__, so glob the whole directory. ---
+# Force-included prefix header for every target:
+#  - <cstdarg>: upstream OcrLite.cpp uses va_start without including it;
+#    newer toolchains pull it in transitively, gcc10 does not.
+#  - cv_compat.h: OpenCV 5 moved minAreaRect/getPerspectiveTransform to
+#    geometry/2d.hpp (the header self-guards with __has_include).
+# A single -include pair avoids argument-pairing issues across generators.
+set(FORCED_INCLUDE ${CMAKE_BINARY_DIR}/forced_include.h)
+file(WRITE ${FORCED_INCLUDE}
+    "#pragma once\n#include <cstdarg>\n#include \"${CMAKE_CURRENT_SOURCE_DIR}/include/cv_compat.h\"\n")
+
 file(GLOB OCR_SRC ${OCR_DIR}/src/*.cpp src/rapidocr.cpp)
 list(REMOVE_ITEM OCR_SRC ${OCR_DIR}/src/OcrResultUtils.cpp) # JNI-only
 
@@ -148,18 +158,10 @@ endif ()
 foreach (t rapidocr RapidOcrOnnx)
     if (TARGET ${t})
         target_compile_definitions(${t} PRIVATE __CLIB__)
-        # Upstream OcrLite.cpp uses va_start without <cstdarg>; newer
-        # toolchains pull it in transitively, gcc10 does not. SHELL: keeps
-        # CMake from deduplicating repeated -include flags into one arg.
-        target_compile_options(${t} PRIVATE "SHELL:-include cstdarg")
+        target_compile_options(${t} PRIVATE -include "${FORCED_INCLUDE}")
         target_include_directories(${t}
             PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
             PRIVATE ${OCR_DIR}/include ${ORT_INCLUDE_DIRS})
-        if (OpenCV_VERSION VERSION_GREATER_EQUAL 5)
-            # OpenCV 5 moved minAreaRect/getPerspectiveTransform to geometry/2d.hpp.
-            target_compile_options(${t} PRIVATE
-                "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/include/cv_compat.h")
-        endif ()
         target_link_libraries(${t} PRIVATE ${ORT_LIBS} ${OpenCV_LIBS})
         if (UNIX AND NOT APPLE AND DEFINED OnnxRuntime_DIR)
             # Fully self-contained .so: fold the C++ runtime in too so the
@@ -189,11 +191,7 @@ if (BUILD_BINS)
     foreach (t rapidocr-bin rapidocr-bench)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${OCR_DIR}/include ${ORT_INCLUDE_DIRS})
-        target_compile_options(${t} PRIVATE "SHELL:-include cstdarg")
-        if (OpenCV_VERSION VERSION_GREATER_EQUAL 5)
-            target_compile_options(${t} PRIVATE
-                "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/include/cv_compat.h")
-        endif ()
+        target_compile_options(${t} PRIVATE -include "${FORCED_INCLUDE}")
         target_link_libraries(${t} PRIVATE ${ORT_LIBS} ${OpenCV_LIBS})
     endforeach ()
 endif ()
