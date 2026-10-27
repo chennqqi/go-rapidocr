@@ -1,0 +1,92 @@
+name: build-libs
+
+# Manual pipeline producing the per-platform CLIB shared libraries under
+# lib/<os>-<arch>/. Artifacts only — nothing is committed back.
+on:
+  workflow_dispatch:
+
+env:
+  ORT_VERSION: "1.20.1"
+
+jobs:
+  linux-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Build libRapidOcrOnnx.so in Docker
+        run: docker build -t go-rapidocr-linux -f docker/Dockerfile.linux-clib .
+      - name: Export artifacts
+        run: |
+          cid=$(docker create go-rapidocr-linux)
+          docker cp "$cid:/workspace/lib/linux-x64" out-linux-x64
+          docker cp "$cid:/workspace/build-clib-linux/libRapidOcrOnnx.so" out-linux-x64/ 2>/dev/null || true
+          docker rm "$cid"
+          ls -l out-linux-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lib-linux-x64
+          path: out-linux-x64
+
+  windows-x64:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-opencv
+      - name: Fetch onnxruntime
+        run: |
+          mkdir -p deps
+          curl -fsSL -o deps/ort-win.zip \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip"
+          unzip -q deps/ort-win.zip -d deps/
+      - name: Build libRapidOcrOnnx.dll
+        run: ./scripts/build_clib_mingw.sh
+      - name: Collect runtime deps
+        run: |
+          mkdir -p out-windows-x64
+          cp build-clib/libRapidOcrOnnx.dll build-clib/libRapidOcrOnnx.dll.a \
+             build-clib/onnxruntime-1.20.dll build-clib/onnxruntime_providers_shared.dll \
+             out-windows-x64/
+          bash scripts/collect_dll_deps.sh build-clib/libRapidOcrOnnx.dll out-windows-x64
+          ls -l out-windows-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lib-windows-x64
+          path: out-windows-x64
+
+  macos:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - { runner: macos-13, arch: x64 }
+          - { runner: macos-15, arch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install deps
+        run: brew install cmake opencv
+      - name: Fetch onnxruntime
+        run: |
+          mkdir -p deps
+          curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-osx-${{ matrix.arch }}-${ORT_VERSION}.tgz" | tar -xz -C deps
+      - name: Build libRapidOcrOnnx.dylib
+        run: bash scripts/build_clib_macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lib-darwin-${{ matrix.arch }}
+          path: build-clib-macos/

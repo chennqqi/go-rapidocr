@@ -45,6 +45,8 @@ else ()
     # onnxruntime/core/session/ layout upstream sources include.
     if (WIN32)
         file(GLOB ORT_CAND deps/onnxruntime-win-x64-*)
+    elseif (APPLE)
+        file(GLOB ORT_CAND deps/onnxruntime-osx-*)
     else ()
         file(GLOB ORT_CAND deps/onnxruntime-linux-*)
     endif ()
@@ -69,7 +71,12 @@ else ()
         endif ()
         set(ORT_LIBS ${ORT_IMPLIB})
     elseif (APPLE)
-        set(ORT_LIBS ${ORT_DIR}/lib/libonnxruntime.dylib)
+        # Link the versioned dylib; @loader_path resolves it beside the
+        # engine library at dlopen time.
+        file(GLOB ORT_DYLIB ${ORT_DIR}/lib/libonnxruntime.*.dylib)
+        list(GET ORT_DYLIB 0 ORT_LIBS)
+        set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+        set(CMAKE_INSTALL_RPATH "@loader_path")
     elseif (UNIX)
         # Link the versioned .so directly; set RPATH so it resolves
         # beside the engine library at runtime.

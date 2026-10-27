@@ -72,6 +72,21 @@ full suite inside the container — both cgo (links `lib/linux-x64/*.so`) and
 purego paths pass. CMake links the versioned `libonnxruntime.so.1.x.y` with
 `$ORIGIN` rpath so the loader finds it beside the engine lib.
 
+### Platform lib builds (GitHub Actions)
+
+`.github/workflows/build-libs.yml` (workflow_dispatch, artifacts only) builds
+the CLIB shared libraries per platform:
+
+- `linux-x64`: `docker/Dockerfile.linux-clib` inside ubuntu-latest
+- `windows-x64`: MSYS2 UCRT64 + `scripts/build_clib_mingw.sh`;
+  `scripts/collect_dll_deps.sh` recurses `objdump` import tables to stage
+  every transitive MinGW dll beside the engine dll
+- `darwin-x64`/`darwin-arm64`: macos-13/macos-15 + `brew install opencv` +
+  `scripts/build_clib_macos.sh`
+
+Downloaded artifacts are staged into `lib/<os>-<arch>/`; they are not
+committed (lib binaries are gitignored).
+
 ### models/ppocr_keys_v1.txt must be LF-only
 
 Upstream's `getline` loop does not strip `\r`. On Windows, text-mode reads
