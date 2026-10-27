@@ -56,7 +56,13 @@ type libRapidOcr struct {
 	ocrGetResult   func(handle uintptr, buf *byte, n int32) int8
 	ocrDestroy     func(handle uintptr)
 
+	// go-rapidocr extensions, present only in our own CLIB builds.
+	safeInit    func(det, cls, rec, keys string, nThreads int32) uintptr
+	safeDetect  func(handle uintptr, input, param, result unsafe.Pointer) int8
+	lastError   func() *byte
+
 	hasInputAPI bool
+	hasSafeAPI  bool
 }
 
 // puregoEngine implements Engine over the CLIB shared library.
@@ -112,6 +118,14 @@ func loadLibrary(config *Config) (*libRapidOcr, error) {
 			registerLibFunc(&lib.ocrGetLen, h, "OcrGetLen")
 			registerLibFunc(&lib.ocrGetResult, h, "OcrGetResult")
 		}
+		// go-rapidocr safe wrappers (try/catch inside the C++ lib): bound
+		// only in our own builds, so each is optional.
+		if addr := lookupFunc(h, "rapidocr_init"); addr != 0 {
+			lib.hasSafeAPI = true
+			registerLibFunc(&lib.safeInit, h, "rapidocr_init")
+			registerLibFunc(&lib.safeDetect, h, "rapidocr_detect_input")
+			registerLibFunc(&lib.lastError, h, "rapidocr_last_error")
+		}
 		return lib, nil
 	}
 	return nil, fmt.Errorf("failed to load %s: %w", sharedLibName(), lastErr)
@@ -125,11 +139,52 @@ func newPureGoEngine(config *Config) (Engine, error) {
 	}
 
 	det, cls, rec, keys := config.modelPaths()
-	ocrH := lib.ocrInit(det, cls, rec, keys, int32(config.NumThreads))
+	// Fail fast when model files are absent: on libraries without the
+	// rapidocr_init safe wrapper, upstream OcrInit throws a C++ exception
+	// that would crash the process across the FFI boundary.
+	for _, p := range []string{det, cls, rec, keys} {
+		if _, err := os.Stat(p); err != nil {
+			return nil, fmt.Errorf("model file not found: %s", p)
+		}
+	}
+	var ocrH uintptr
+	if lib.hasSafeAPI {
+		ocrH = lib.safeInit(det, cls, rec, keys, int32(config.NumThreads))
+	} else {
+		ocrH = lib.ocrInit(det, cls, rec, keys, int32(config.NumThreads))
+	}
 	if ocrH == 0 {
-		return nil, fmt.Errorf("OcrInit failed (check model files under %s)", config.ModelDir)
+		return nil, fmt.Errorf("OcrInit failed (check model files under %s)%s", config.ModelDir, lib.errSuffix())
 	}
 	return &puregoEngine{lib: lib, ocrH: ocrH}, nil
+}
+
+// errSuffix appends the C++ exception message captured by the safe wrapper.
+func (l *libRapidOcr) errSuffix() string {
+	if !l.hasSafeAPI {
+		return ""
+	}
+	msg := cStringPtr(l.lastError())
+	if len(msg) == 0 {
+		return ""
+	}
+	return ": " + msg
+}
+
+// cStringPtr reads a NUL-terminated string at p.
+func cStringPtr(p *byte) string {
+	if p == nil {
+		return ""
+	}
+	var buf []byte
+	for i := 0; i < 4096; i++ {
+		c := *(*byte)(unsafe.Add(unsafe.Pointer(p), i))
+		if c == 0 {
+			break
+		}
+		buf = append(buf, c)
+	}
+	return string(buf)
 }
 
 // buildParam serializes Param into the C OCR_PARAM layout.
@@ -240,7 +295,12 @@ func (e *puregoEngine) detect(data []byte, width, height, channels int, encoded 
 	param := buildParam(p)
 	result := make([]byte, ocrResultSize)
 
-	ok := e.lib.ocrDetectInput(e.ocrH, unsafe.Pointer(&input[0]), unsafe.Pointer(&param[0]), unsafe.Pointer(&result[0]))
+	var ok int8
+	if e.lib.hasSafeAPI {
+		ok = e.lib.safeDetect(e.ocrH, unsafe.Pointer(&input[0]), unsafe.Pointer(&param[0]), unsafe.Pointer(&result[0]))
+	} else {
+		ok = e.lib.ocrDetectInput(e.ocrH, unsafe.Pointer(&input[0]), unsafe.Pointer(&param[0]), unsafe.Pointer(&result[0]))
+	}
 	// Keep the caller's pixel/encoded bytes alive across the foreign call —
 	// OCR_INPUT.data points into it.
 	runtime.KeepAlive(data)

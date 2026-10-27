@@ -24,7 +24,7 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"path/filepath"
+	"os"
 	"unsafe"
 )
 
@@ -36,12 +36,21 @@ type cgoEngine struct {
 	handle C.OCR_HANDLE
 }
 
+// cLastErr fetches the C++ exception message recorded by the safe wrapper.
+func cLastErr() string {
+	msg := C.rapidocr_last_error()
+	if msg == nil {
+		return ""
+	}
+	return ": " + C.GoString(msg)
+}
+
 // newCGOEngine loads the models and creates the upstream OCR_HANDLE.
 func newCGOEngine(config *Config) (*cgoEngine, error) {
 	det, cls, rec, keys := config.modelPaths()
 	for _, p := range []string{det, cls, rec, keys} {
-		if _, err := filepath.Abs(p); err != nil {
-			return nil, fmt.Errorf("invalid model path %s: %w", p, err)
+		if _, err := os.Stat(p); err != nil {
+			return nil, fmt.Errorf("model file not found: %s", p)
 		}
 	}
 
@@ -54,9 +63,11 @@ func newCGOEngine(config *Config) (*cgoEngine, error) {
 	defer C.free(unsafe.Pointer(cRec))
 	defer C.free(unsafe.Pointer(cKeys))
 
-	handle := C.OcrInit(cDet, cCls, cRec, cKeys, C.int(config.NumThreads))
+	// rapidocr_init catches C++ exceptions inside the library; plain
+	// OcrInit would propagate them across the FFI boundary and crash.
+	handle := C.rapidocr_init(cDet, cCls, cRec, cKeys, C.int(config.NumThreads))
 	if handle == nil {
-		return nil, fmt.Errorf("OcrInit failed (check model files under %s)", config.ModelDir)
+		return nil, fmt.Errorf("OcrInit failed (check model files under %s)%s", config.ModelDir, cLastErr())
 	}
 	return &cgoEngine{handle: handle}, nil
 }
@@ -150,7 +161,7 @@ func (e *cgoEngine) DetectBytes(ctx context.Context, data []byte, p *Param) (*Re
 
 	cParam := toCParam(p)
 	var res C.OCR_RESULT
-	ok := C.OcrDetectInput(e.handle, input, &cParam, &res)
+	ok := C.rapidocr_detect_input(e.handle, input, &cParam, &res)
 	if ok == 0 {
 		return &Result{}, nil
 	}
@@ -181,7 +192,7 @@ func (e *cgoEngine) DetectPixels(ctx context.Context, data []byte, width, height
 
 	cParam := toCParam(p)
 	var res C.OCR_RESULT
-	ok := C.OcrDetectInput(e.handle, input, &cParam, &res)
+	ok := C.rapidocr_detect_input(e.handle, input, &cParam, &res)
 	if ok == 0 {
 		return &Result{}, nil
 	}

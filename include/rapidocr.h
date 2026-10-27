@@ -21,6 +21,12 @@ typedef char OCR_BOOL;
 #define RAPIDOCR_FALSE 0
 #endif
 
+#if defined(_WIN32)
+#define RAPIDOCR_API __declspec(dllexport)
+#else
+#define RAPIDOCR_API __attribute__((visibility("default")))
+#endif
+
 // OCR_PARAM mirrors upstream __ocr_param.
 typedef struct {
     int padding;
@@ -90,7 +96,23 @@ void OcrDestroy(OCR_HANDLE handle);
 // --- go-rapidocr extensions (not part of the upstream ABI) ---
 
 // rapidocr_version returns the wrapper version string.
-const char *rapidocr_version(void);
+RAPIDOCR_API const char *rapidocr_version(void);
+
+// rapidocr_init is OcrInit wrapped in try/catch: on a C++ exception
+// (missing/corrupt model files etc.) it returns NULL and stores the
+// exception message, which rapidocr_last_error returns.
+RAPIDOCR_API OCR_HANDLE rapidocr_init(const char *szDetModel, const char *szClsModel,
+                                      const char *szRecModel, const char *szKeyPath,
+                                      int nThreads);
+
+// rapidocr_detect_input is OcrDetectInput wrapped in try/catch with the
+// same error reporting as rapidocr_init.
+RAPIDOCR_API OCR_BOOL rapidocr_detect_input(OCR_HANDLE handle, OCR_INPUT *input,
+                                            OCR_PARAM *pParam, OCR_RESULT *ocrResult);
+
+// rapidocr_last_error returns the message recorded by the last failed
+// rapidocr_init/rapidocr_detect_input call on this thread, or NULL.
+RAPIDOCR_API const char *rapidocr_last_error(void);
 
 #ifdef __cplusplus
 }

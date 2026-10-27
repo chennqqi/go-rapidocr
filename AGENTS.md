@@ -87,6 +87,15 @@ the CLIB shared libraries per platform:
 Downloaded artifacts are staged into `lib/<os>-<arch>/`; they are not
 committed (lib binaries are gitignored).
 
+### go-rapidocr C extensions
+
+`rapidocr_init` / `rapidocr_detect_input` / `rapidocr_last_error` wrap the
+upstream calls in try/catch. C++ exceptions (bad/missing models, corrupt
+images) cannot cross the FFI boundary — they crash the process. Both
+backends prefer the safe wrappers when exported; Go also stats model files
+upfront so legacy libraries fail cleanly. On C++ exception the message is
+surfaced via `rapidocr_last_error` and appended to the Go error.
+
 ### models/ppocr_keys_v1.txt must be LF-only
 
 Upstream's `getline` loop does not strip `\r`. On Windows, text-mode reads

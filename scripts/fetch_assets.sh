@@ -10,7 +10,7 @@ MODEL_SCOPE=https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/master
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*) asset=windows-clib-vs2022-mt.7z; dst=lib/windows-x64 ;;
   Linux*)                asset=linux-clib.7z;            dst=lib/linux-x64 ;;
-  Darwin*)               asset=macos-clib.7z;            dst=darwin-x64 ;;
+  Darwin*)               asset=macos-clib.7z;            dst=lib/darwin-x64 ;;
   *) echo "unsupported OS: $(uname -s)"; exit 1 ;;
 esac
 

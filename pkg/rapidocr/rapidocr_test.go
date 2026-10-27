@@ -146,6 +146,76 @@ func TestPureGoDetectImage(t *testing.T) {
 	t.Logf("image path got %d blocks", len(result.TextBlocks))
 }
 
+func TestPureGoDetectEmptyData(t *testing.T) {
+	cfg := testConfig(t)
+	engine, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer engine.Close()
+	if _, err := engine.DetectBytes(context.Background(), nil, nil); err == nil {
+		t.Error("expected error on empty image data")
+	}
+}
+
+func TestPureGoBadModelPath(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Backend = BackendPureGo
+	cfg.LibraryPath = ""
+	cfg.ModelDir = t.TempDir() // no models inside
+	root, _ := filepath.Abs("../..")
+	for _, name := range []string{sharedLibName(), "lib" + sharedLibName()} {
+		if _, err := os.Stat(filepath.Join(root, "lib", libDirName(), name)); err == nil {
+			cfg.LibraryPath = filepath.Join(root, "lib", libDirName(), name)
+			break
+		}
+	}
+	if len(cfg.LibraryPath) == 0 {
+		t.Skip("shared library not present")
+	}
+	if _, err := New(cfg); err == nil {
+		t.Error("expected OcrInit failure with missing models")
+	}
+}
+
+// TestPureGoCorruptModel exercises the rapidocr_init safe wrapper: the
+// C++ exception raised by ONNX Runtime on a garbage model file must come
+// back as a Go error, not a crash.
+func TestPureGoCorruptModel(t *testing.T) {
+	root, _ := filepath.Abs("../..")
+	libDir := filepath.Join(root, "lib", libDirName())
+	var lib string
+	for _, name := range []string{"lib" + sharedLibName(), sharedLibName()} {
+		p := filepath.Join(libDir, name)
+		if _, err := os.Stat(p); err == nil {
+			lib = p
+			break
+		}
+	}
+	if len(lib) == 0 {
+		t.Skip("structured CLIB not present")
+	}
+
+	dir := t.TempDir()
+	garbage := filepath.Join(dir, "bad.onnx")
+	if err := os.WriteFile(garbage, []byte("not an onnx model"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Backend = BackendPureGo
+	cfg.LibraryPath = lib
+	cfg.ModelDir = dir
+	cfg.DetModel = "bad.onnx"
+	cfg.ClsModel = "bad.onnx"
+	cfg.RecModel = "bad.onnx"
+	cfg.KeysFile = "bad.onnx"
+	if _, err := New(cfg); err == nil {
+		t.Error("expected error for corrupt models")
+	} else {
+		t.Logf("init error: %v", err)
+	}
+}
+
 func TestParamZeroIsValid(t *testing.T) {
 	buf := buildParam(nil)
 	for i, b := range buf {
