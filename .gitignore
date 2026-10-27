@@ -15,3 +15,6 @@ nul
 *.exe
 *.test
 Thumbs.db
+docker-deps/
+build-glibc/
+out-*/

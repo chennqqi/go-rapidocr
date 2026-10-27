@@ -118,18 +118,41 @@ go run ./cmd/rapidocr-cli -backend purego -lib lib/windows-x64/RapidOcrOnnx.dll 
   -rec ch_PP-OCRv4_rec_mobile.onnx testdata/1.jpg
 ```
 
-## Building the C++ static library (cgo backend)
+## Building the C++ library (CI artifacts)
 
-Not yet automated per-platform; see `CMakeLists.txt`. Requires deps from
-RapidAI/OpenCVBuilder and RapidAI/OnnxruntimeBuilder releases unpacked under
-`deps/{opencv-static,onnxruntime-static}/<platform>`.
+`scripts/fetch_static_deps.sh {x64|arm64}` stages RapidAI static dep packs
+into `docker-deps/`; `docker/Dockerfile.linux-clib-glibc` then builds a
+fully self-contained `libRapidOcrOnnx.so` (onnxruntime + opencv + codecs +
+libstdc++ all inside, NEEDED = libc family only). `.github/workflows/
+build-libs.yml` runs this per platform (manual `workflow_dispatch`).
 
-- Linux static libs must target old glibc (same rule as sister project zxing:
-  build on CentOS 7 / manylinux, never Alpine musl, for the *Go binary*; a musl
-  static lib cannot be linked into a glibc cgo binary).
-- Windows upstream static libs are MSVC — unusable by MinGW cgo. Options:
-  link `onnxruntime.dll` via a generated import `.a`, or build deps with
-  MinGW/MSYS2. The purego backend sidesteps this entirely.
+### Linux glibc floor — CRITICAL
+
+- Never use Alpine/musl for Linux builds: musl objects cannot be linked
+  into glibc cgo binaries (same rule as the zxing project).
+- Base image: `quay.io/pypa/manylinux_2_28_{x86_64,aarch64}` (AlmaLinux 8,
+  glibc 2.28, gcc-toolset-14, new C++11 ABI). Produced .so references at
+  most GLIBC_2.27 → runs on Ubuntu 18.04+, Debian 10+, RHEL/Rocky/Alma 8+.
+- **glibc 2.17 (manylinux2014/CentOS 7) is NOT possible** with prebuilt
+  deps: its devtoolset gcc hard-codes `_GLIBCXX_USE_CXX11_ABI=0` in
+  c++config.h (command-line `-D` is `#undef`'d), while all RapidAI static
+  packs are new-ABI. Reaching 2.17 would need source-built deps.
+- linux-x64: fully static (`onnxruntime-…-ubuntu-20.04-amd64-static` +
+  `opencv-…-ubuntu-16.04-amd64`).
+- linux-arm64: no glibc static ORT pack exists — uses official
+  `onnxruntime-linux-aarch64-*.tgz` shared lib (needs only GLIBC_2.27,
+  shipped beside the CLIB .so, resolved via `$ORIGIN` rpath) + static
+  opencv ubuntu-16.04-arm64.
+- ORT static packs have flat `include/`; CMake generates stub headers under
+  `<build>/ort-compat/onnxruntime/core/session/` at configure time.
+
+### Windows / macOS
+
+- Windows upstream static libs are MSVC — unusable by MinGW cgo. The
+  workflow builds `libRapidOcrOnnx.dll` with MSYS2 UCRT64 instead, and
+  `scripts/collect_dll_deps.sh` gathers the transitive DLL closure.
+- macOS builds on GHA runners (macos-13 x64 / macos-15 arm64) with brew
+  opencv + official onnxruntime; `-lc++` (not `-lstdc++`).
 
 ## Code Style
 

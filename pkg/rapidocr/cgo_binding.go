@@ -10,8 +10,12 @@ package rapidocr
 /*
 #cgo CXXFLAGS: -std=c++17
 #cgo CFLAGS: -I${SRCDIR}/../../include
-#cgo linux,amd64   LDFLAGS: -L${SRCDIR}/../../lib/linux-x64 -lRapidOcrOnnx -lonnxruntime -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lstdc++ -lm -lpthread -ldl
-#cgo linux,arm64   LDFLAGS: -L${SRCDIR}/../../lib/linux-arm64 -lRapidOcrOnnx -lonnxruntime -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lstdc++ -lm -lpthread -ldl
+// The shipped libRapidOcrOnnx.so is self-contained (onnxruntime + opencv
+// statically linked inside it). If you instead link split static libs
+// (librapidocr.a + separate dep .a files), add -lonnxruntime -lopencv_*
+// back via CGO_LDFLAGS.
+#cgo linux,amd64   LDFLAGS: -L${SRCDIR}/../../lib/linux-x64 -lRapidOcrOnnx -lstdc++ -lm -lpthread -ldl
+#cgo linux,arm64   LDFLAGS: -L${SRCDIR}/../../lib/linux-arm64 -lRapidOcrOnnx -lstdc++ -lm -lpthread -ldl
 #cgo windows,amd64 LDFLAGS: -L${SRCDIR}/../../lib/windows-x64 -lRapidOcrOnnx -lonnxruntime -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lstdc++
 #cgo darwin,amd64  LDFLAGS: -L${SRCDIR}/../../lib/darwin-x64 -lrapidocr -lonnxruntime -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lc++
 #cgo darwin,arm64  LDFLAGS: -L${SRCDIR}/../../lib/darwin-arm64 -lrapidocr -lonnxruntime -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lc++

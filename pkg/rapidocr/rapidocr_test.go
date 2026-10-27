@@ -15,13 +15,17 @@ import (
 
 // libDirName returns the platform library directory name.
 func libDirName() string {
+	arch := "x64"
+	if runtime.GOARCH == "arm64" {
+		arch = "arm64"
+	}
 	switch runtime.GOOS {
 	case "windows":
-		return "windows-x64"
+		return "windows-" + arch
 	case "darwin":
-		return "darwin-x64"
+		return "darwin-" + arch
 	default:
-		return "linux-x64"
+		return "linux-" + arch
 	}
 }
 

@@ -9,25 +9,59 @@ env:
   ORT_VERSION: "1.20.1"
 
 jobs:
+  # glibc-frozen builds: all C++ deps (onnxruntime, opencv, codec libs,
+  # libstdc++) are statically linked into a single libRapidOcrOnnx.so, so the
+  # artifact is distro-agnostic. Base image is manylinux_2_28 (AlmaLinux 8,
+  # glibc 2.28); the produced .so only references up to GLIBC_2.27.
+  # manylinux2014/CentOS 7 cannot be used: its devtoolset gcc forces
+  # _GLIBCXX_USE_CXX11_ABI=0, incompatible with the prebuilt static packs.
   linux-x64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Build libRapidOcrOnnx.so in Docker
-        run: docker build -t go-rapidocr-linux -f docker/Dockerfile.linux-clib .
+      - name: Fetch static dep packs
+        run: ./scripts/fetch_static_deps.sh x64
+      - name: Build libRapidOcrOnnx.so (glibc 2.27 floor)
+        run: |
+          docker build --build-arg BASE_IMAGE=quay.io/pypa/manylinux_2_28_x86_64 \
+              -t go-rapidocr-linux-x64 -f docker/Dockerfile.linux-clib-glibc .
       - name: Export artifacts
         run: |
-          cid=$(docker create go-rapidocr-linux)
-          docker cp "$cid:/workspace/lib/linux-x64" out-linux-x64
-          docker cp "$cid:/workspace/build-clib-linux/libRapidOcrOnnx.so" out-linux-x64/ 2>/dev/null || true
+          cid=$(docker create go-rapidocr-linux-x64)
+          docker cp "$cid:/artifacts" out-linux-x64
           docker rm "$cid"
           ls -l out-linux-x64
       - uses: actions/upload-artifact@v4
         with:
           name: lib-linux-x64
           path: out-linux-x64
+
+  # arm64: static opencv + shared onnxruntime (official aarch64 .so needs
+  # only GLIBC_2.27 — no glibc static pack exists upstream).
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Fetch static dep packs
+        run: ./scripts/fetch_static_deps.sh arm64
+      - name: Build libRapidOcrOnnx.so (glibc 2.28 floor)
+        run: |
+          docker build --build-arg BASE_IMAGE=quay.io/pypa/manylinux_2_28_aarch64 \
+              -t go-rapidocr-linux-arm64 -f docker/Dockerfile.linux-clib-glibc .
+      - name: Export artifacts
+        run: |
+          cid=$(docker create go-rapidocr-linux-arm64)
+          docker cp "$cid:/artifacts" out-linux-arm64
+          docker rm "$cid"
+          ls -l out-linux-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lib-linux-arm64
+          path: out-linux-arm64
 
   windows-x64:
     runs-on: windows-latest
