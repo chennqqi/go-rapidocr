@@ -19,6 +19,7 @@ if (UNIX AND NOT APPLE)
 endif ()
 option(BUILD_STATIC_LIB "Build static library" ON)
 option(BUILD_SHARED_LIB "Build shared CLIB (e.g. MinGW-built dll for purego)" OFF)
+option(BUILD_BINS "Build upstream CLI + benchmark executables for comparison" OFF)
 if (BUILD_SHARED_LIB)
     set(BUILD_SHARED_LIBS ON)
 else ()
@@ -148,15 +149,16 @@ foreach (t rapidocr RapidOcrOnnx)
     if (TARGET ${t})
         target_compile_definitions(${t} PRIVATE __CLIB__)
         # Upstream OcrLite.cpp uses va_start without <cstdarg>; newer
-        # toolchains pull it in transitively, gcc10 does not.
-        target_compile_options(${t} PRIVATE -include cstdarg)
+        # toolchains pull it in transitively, gcc10 does not. SHELL: keeps
+        # CMake from deduplicating repeated -include flags into one arg.
+        target_compile_options(${t} PRIVATE "SHELL:-include cstdarg")
         target_include_directories(${t}
             PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
             PRIVATE ${OCR_DIR}/include ${ORT_INCLUDE_DIRS})
         if (OpenCV_VERSION VERSION_GREATER_EQUAL 5)
             # OpenCV 5 moved minAreaRect/getPerspectiveTransform to geometry/2d.hpp.
             target_compile_options(${t} PRIVATE
-                -include ${CMAKE_CURRENT_SOURCE_DIR}/include/cv_compat.h)
+                "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/include/cv_compat.h")
         endif ()
         target_link_libraries(${t} PRIVATE ${ORT_LIBS} ${OpenCV_LIBS})
         if (UNIX AND NOT APPLE AND DEFINED OnnxRuntime_DIR)
@@ -166,6 +168,35 @@ foreach (t rapidocr RapidOcrOnnx)
         endif ()
     endif ()
 endforeach ()
+
+# Upstream single-shot CLI (src/main.cpp) and loop benchmark
+# (benchmark/benchmark.cpp), compiled with __EXEC__ so their sources emit.
+# Used by bench/ to compare against the Go wrapper.
+if (BUILD_BINS)
+    # Drop our wrapper: the upstream C API is empty under __EXEC__.
+    set(BIN_SRC ${OCR_SRC})
+    list(REMOVE_ITEM BIN_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/rapidocr.cpp)
+    add_executable(rapidocr-bin ${BIN_SRC})
+    target_compile_definitions(rapidocr-bin PRIVATE __EXEC__)
+    set(BENCH_SRC
+        ${OCR_DIR}/benchmark/benchmark.cpp
+        ${OCR_DIR}/src/AngleNet.cpp ${OCR_DIR}/src/clipper.cpp
+        ${OCR_DIR}/src/CrnnNet.cpp ${OCR_DIR}/src/DbNet.cpp
+        ${OCR_DIR}/src/getopt.cpp ${OCR_DIR}/src/OcrLiteImpl.cpp
+        ${OCR_DIR}/src/OcrLite.cpp ${OCR_DIR}/src/OcrUtils.cpp)
+    add_executable(rapidocr-bench ${BENCH_SRC})
+    target_compile_definitions(rapidocr-bench PRIVATE __EXEC__)
+    foreach (t rapidocr-bin rapidocr-bench)
+        target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${OCR_DIR}/include ${ORT_INCLUDE_DIRS})
+        target_compile_options(${t} PRIVATE "SHELL:-include cstdarg")
+        if (OpenCV_VERSION VERSION_GREATER_EQUAL 5)
+            target_compile_options(${t} PRIVATE
+                "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/include/cv_compat.h")
+        endif ()
+        target_link_libraries(${t} PRIVATE ${ORT_LIBS} ${OpenCV_LIBS})
+    endforeach ()
+endif ()
 
 set(INSTALL_TARGETS)
 if (TARGET rapidocr)

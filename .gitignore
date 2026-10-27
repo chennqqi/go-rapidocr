@@ -18,3 +18,6 @@ Thumbs.db
 docker-deps/
 build-glibc/
 out-*/
+build-bins/
+rapidocr-cli*.exe
+testdata/*-result.*

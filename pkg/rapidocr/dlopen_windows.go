@@ -47,6 +47,12 @@ func dlopen(path string) (uintptr, error) {
 		}
 	}
 
+	// LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR requires a fully qualified path;
+	// a relative lpFileName fails with ERROR_INVALID_PARAMETER.
+	absPath, err := filepath.Abs(path)
+	if err == nil {
+		path = absPath
+	}
 	pathPtr, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
 		return 0, err

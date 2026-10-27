@@ -28,6 +28,7 @@ func main() {
 		padding  = flag.Int("padding", 50, "white padding added around the image")
 		noAngle  = flag.Bool("no-angle", false, "disable direction classification")
 		outImg   = flag.String("draw", "", "optional: write result box image (not implemented)")
+		repeat   = flag.Int("n", 1, "repeat detection N times (benchmark mode: prints avg timings)")
 	)
 	flag.Parse()
 
@@ -48,13 +49,14 @@ func main() {
 	cfg.NumThreads = *threads
 	cfg.LibraryPath = *libPath
 
+	initStart := time.Now()
 	engine, err := rapidocr.New(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "init engine:", err)
 		os.Exit(1)
 	}
 	defer engine.Close()
-	fmt.Fprintf(os.Stderr, "backend: %s\n", engine.GetBackend())
+	fmt.Fprintf(os.Stderr, "backend: %s, init=%v\n", engine.GetBackend(), time.Since(initStart))
 
 	imgPath := flag.Arg(0)
 	data, err := os.ReadFile(imgPath)
@@ -70,17 +72,27 @@ func main() {
 		MostAngle:  !*noAngle,
 	}
 
+	var result *rapidocr.Result
+	var detSum, clsSum, recSum float64
 	start := time.Now()
-	result, err := engine.DetectBytes(context.Background(), data, param)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "detect:", err)
-		os.Exit(1)
+	for i := 0; i < *repeat; i++ {
+		result, err = engine.DetectBytes(context.Background(), data, param)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "detect:", err)
+			os.Exit(1)
+		}
+		detSum += result.DBNetTime
+		for _, b := range result.TextBlocks {
+			clsSum += b.AngleTime
+			recSum += b.CrnnTime
+		}
 	}
 	elapsed := time.Since(start)
 
 	for i, b := range result.TextBlocks {
 		fmt.Printf("[%d] %.3f %s  box=%v\n", i, b.BoxScore, b.Text, b.Box)
 	}
-	fmt.Fprintf(os.Stderr, "\n%d text blocks, engine=%.1fms (det %.1fms), total=%v\n",
-		len(result.TextBlocks), result.DetectTime, result.DBNetTime, elapsed)
+	n := float64(*repeat)
+	fmt.Fprintf(os.Stderr, "\n%d text blocks, avg det=%.1fms cls=%.1fms rec=%.1fms, wall=%v over %d run(s)\n",
+		len(result.TextBlocks), detSum/n, clsSum/n, recSum/n, elapsed, *repeat)
 }
