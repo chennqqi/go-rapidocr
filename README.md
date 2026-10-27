@@ -14,10 +14,11 @@ Two backends, same API:
 ## Quick start
 
 ```bash
-./scripts/fetch_assets.sh   # download shared lib + models (needs python3+py7zr, curl)
+./scripts/fetch_assets.sh   # lib/<os>-<arch>/ from our release + models
+                            # (needs curl; --upstream for the legacy CLIB)
 
 go run ./cmd/rapidocr-cli -backend purego \
-    -lib lib/windows-x64/RapidOcrOnnx.dll \
+    -lib lib/windows-x64/libRapidOcrOnnx.dll \
     -det ch_PP-OCRv4_det_mobile.onnx \
     -cls ch_ppocr_mobile_v2.0_cls_mobile.onnx \
     -rec ch_PP-OCRv4_rec_mobile.onnx \
@@ -32,7 +33,7 @@ cfg.ModelDir = "models"
 cfg.DetModel = "ch_PP-OCRv4_det_mobile.onnx"
 cfg.ClsModel = "ch_ppocr_mobile_v2.0_cls_mobile.onnx"
 cfg.RecModel = "ch_PP-OCRv4_rec_mobile.onnx"
-cfg.LibraryPath = "lib/windows-x64/RapidOcrOnnx.dll" // purego only
+cfg.LibraryPath = "lib/windows-x64/libRapidOcrOnnx.dll" // purego only
 
 engine, err := rapidocr.New(cfg) // backend: auto
 if err != nil { log.Fatal(err) }

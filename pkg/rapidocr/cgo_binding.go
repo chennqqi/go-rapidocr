@@ -16,9 +16,9 @@ package rapidocr
 // back via CGO_LDFLAGS.
 #cgo linux,amd64   LDFLAGS: -L${SRCDIR}/../../lib/linux-x64 -lRapidOcrOnnx -lstdc++ -lm -lpthread -ldl
 #cgo linux,arm64   LDFLAGS: -L${SRCDIR}/../../lib/linux-arm64 -lRapidOcrOnnx -lstdc++ -lm -lpthread -ldl
-#cgo windows,amd64 LDFLAGS: -L${SRCDIR}/../../lib/windows-x64 -lRapidOcrOnnx -lonnxruntime -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lstdc++
-#cgo darwin,amd64  LDFLAGS: -L${SRCDIR}/../../lib/darwin-x64 -lrapidocr -lonnxruntime -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lc++
-#cgo darwin,arm64  LDFLAGS: -L${SRCDIR}/../../lib/darwin-arm64 -lrapidocr -lonnxruntime -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lc++
+#cgo windows,amd64 LDFLAGS: -L${SRCDIR}/../../lib/windows-x64 -lRapidOcrOnnx -lstdc++
+#cgo darwin,amd64  LDFLAGS: -L${SRCDIR}/../../lib/darwin-x64 -lRapidOcrOnnx -lc++
+#cgo darwin,arm64  LDFLAGS: -L${SRCDIR}/../../lib/darwin-arm64 -lRapidOcrOnnx -lc++
 #include <stdlib.h>
 #include "rapidocr.h"
 */
