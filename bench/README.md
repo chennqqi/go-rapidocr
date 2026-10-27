@@ -46,6 +46,23 @@ doAngle=1`), Windows 11, Ryzen-class CPU, 10 loops after warmup.
   the purego (runtime-loaded dll) and cgo (linked dll) backends are within
   noise of each other.
 
+## Model tier matters more than the wrapper
+
+The numbers above use the **mobile** models (det 4.7MB + rec 11MB).
+Re-running with **server** models (det 113MB + rec 90MB,
+`ch_PP-OCRv4_*_server.onnx`, cls stays mobile) on the same images:
+
+- `ch_en_num.jpg`: 16 blocks vs 15 — recovers 底价， and all three
+  mobile misreads are fixed (高→直击， 京焙→就赔， missing 起）.
+  Cost: ~31 s/run vs ~0.9 s (det 1.3 s, rec ~1.9 s/line).
+- `1.jpg`: same 12 blocks but more faithful punctuation (keeps
+  `beans."`, `saying:"If`) at ~135 s/run (rec ~11 s/line on CPU).
+
+So the mobile-vs-server trade-off is ~35-150x wall time for a modest
+accuracy bump — choose per workload, the Go API takes any model paths.
+The Python-vs-Go *relative* gap is model-independent glue overhead and
+shrinks as inference dominates (server models), it does not disappear.
+
 ## Reproduce
 
 ```bash
