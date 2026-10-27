@@ -64,6 +64,21 @@ Note: `OCR_INPUT`/`OCR_PARAM` structs that hold Go pointers must be
 allocated via `C.malloc` — passing a Go struct containing a Go pointer
 trips the cgo pointer checker ("Go pointer to unpinned Go pointer").
 
+### Linux build (Docker)
+
+`docker/Dockerfile.linux-clib` (golang:1.25-bookworm + `libopencv-dev` +
+official `onnxruntime-linux-x64`) builds `libRapidOcrOnnx.so` and runs the
+full suite inside the container — both cgo (links `lib/linux-x64/*.so`) and
+purego paths pass. CMake links the versioned `libonnxruntime.so.1.x.y` with
+`$ORIGIN` rpath so the loader finds it beside the engine lib.
+
+### models/ppocr_keys_v1.txt must be LF-only
+
+Upstream's `getline` loop does not strip `\r`. On Windows, text-mode reads
+hide CRLF, but on Linux/macOS the trailing `\r` is appended to every key
+label, so each decoded character leaks a `\r` into the result text.
+`fetch_assets.sh` normalizes the file; keep it LF.
+
 ## Verification
 
 ```bash
