@@ -1,0 +1,3 @@
+[submodule "rapidocr-onnx"]
+	path = rapidocr-onnx
+	url = https://github.com/RapidAI/RapidOcrOnnx.git

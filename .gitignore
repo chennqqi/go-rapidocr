@@ -1,0 +1,17 @@
+# Build outputs
+/lib/*/lib*.a
+/lib/*/*.dll.a
+/deps/
+/build*/
+
+# Downloaded artifacts (models/libs are fetched, not committed by default)
+/models/*.onnx
+/lib/*/RapidOcrOnnx.dll
+/lib/*/libRapidOcrOnnx.so
+/lib/*/libRapidOcrOnnx.dylib
+
+# OS/editor noise
+nul
+*.exe
+*.test
+Thumbs.db
