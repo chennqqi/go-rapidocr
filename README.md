@@ -47,6 +47,35 @@ for _, b := range result.TextBlocks {
 }
 ```
 
+## Model selection
+
+RapidOCR is a three-model pipeline — det (find text lines), cls (0/180°
+rotation), rec (read characters) — and the `models/` you pick matter far
+more for accuracy than the backend. `fetch_assets.sh --models <tier>`
+downloads a consistent set:
+
+| Tier | Models | Size | Speed (CPU) | Notes |
+|------|--------|------|-------------|-------|
+| `mobile` (default) | PP-OCRv4 mobile | ~16 MB | ~0.8 s/img | good baseline; slips on stylized fonts |
+| `server` | PP-OCRv4 server det+rec | ~200 MB | ~30–135 s/img | best v4 accuracy |
+| `v5-mobile` | PP-OCRv5 mobile | ~18 MB | ~1 s/img | newer arch |
+| `v5-server` | PP-OCRv5 server | ~96 MB | slower | newest + accurate |
+
+Measured on this repo's test images (see `bench/README.md`): server rec
+fixed 3 of 4 mobile misreads but costs ~35–150x wall time. Choose per
+workload: mobile for interactive use, server for batch/quality-critical.
+
+Rules:
+
+- **The keys/dict file MUST match the rec model** — `ppocr_keys_v1.txt`
+  for PP-OCRv3/v4, `ppocrv5_dict.txt` for PP-OCRv5, `<lang>_dict.txt`
+  for non-Chinese rec models (japan/korean/latin/cyrillic/…). Set
+  `Config.KeysFile` accordingly; a mismatched dict yields garbage text.
+- det/cls may be mixed across tiers (e.g. mobile det + server rec for a
+  middle ground) — only the rec↔dict pairing is strict.
+- Any `.onnx` path works; `Config.DetModel`/`ClsModel`/`RecModel`/`KeysFile`
+  are just filenames inside `Config.ModelDir` or absolute paths.
+
 ## Building the CLIB yourself (recommended)
 
 The upstream `windows-clib` release (<=1.2.3) exports only the legacy

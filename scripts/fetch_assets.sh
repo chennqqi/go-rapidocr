@@ -2,11 +2,19 @@
 # Fetches the shared libraries and models needed to run go-rapidocr.
 #
 # Usage:
-#   ./scripts/fetch_assets.sh [TAG|--upstream]
+#   ./scripts/fetch_assets.sh [TAG|--upstream] [--models TIER]
 #
-# Default: download lib-<os>-<arch>.tar.gz from this repo's GitHub release
-# (latest release, or the given TAG). --upstream falls back to the
-# RapidAI/RapidOcrOnnx 1.2.3 prebuilt CLIB (legacy text-only API).
+# Library: downloads lib-<os>-<arch>.tar.gz from this repo's GitHub release
+# (latest release, or TAG). --upstream falls back to the RapidAI
+# RapidOcrOnnx 1.2.3 prebuilt CLIB (legacy text-only API).
+#
+# Models: TIER selects which PP-OCR variant to download into models/:
+#   mobile      PP-OCRv4 mobile det/cls/rec (~16MB, default — fast, ~95% acc)
+#   server      PP-OCRv4 server det/rec (~200MB — slow, best accuracy)
+#   v5-mobile   PP-OCRv5 mobile (~18MB — newer, needs ppocrv5_dict.txt)
+#   v5-server   PP-OCRv5 server (~96MB — newest + accurate + slow)
+# The recognition dict MUST match the rec model; each tier downloads its
+# matching keys file. See README "Model selection".
 set -e
 cd "$(dirname "$0")/.."
 
@@ -28,7 +36,17 @@ dst=lib/$plat
 
 mkdir -p "$dst" models
 
-TAG="${1:-latest}"
+TAG=latest
+TIER=mobile
+for arg in "$@"; do
+  case "$arg" in
+    --upstream) TAG=--upstream ;;
+    --models=*) TIER="${arg#*=}" ;;
+    --models) echo "--models needs =TIER (mobile|server|v5-mobile|v5-server)" >&2; exit 2 ;;
+    *) TAG="$arg" ;;
+  esac
+done
+
 if [ "$TAG" != "--upstream" ]; then
   # --- this repo's release (full structured API, safe wrappers) ---
   if [ "$TAG" = "latest" ]; then
@@ -70,20 +88,50 @@ EOF
   find "$dst" -type d -empty -delete 2>/dev/null || true
 fi
 
-# --- models (PP-OCRv4 mobile) ---
-for m in \
-  "onnx/PP-OCRv4/det/ch_PP-OCRv4_det_mobile.onnx" \
-  "onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx" \
-  "onnx/PP-OCRv4/rec/ch_PP-OCRv4_rec_mobile.onnx"; do
+# --- models ---
+# The rec dict lives under the paddle tree on ModelScope and MUST match
+# the rec model version/language.
+case "$TIER" in
+  mobile)
+    files="onnx/PP-OCRv4/det/ch_PP-OCRv4_det_mobile.onnx
+onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx
+onnx/PP-OCRv4/rec/ch_PP-OCRv4_rec_mobile.onnx"
+    dict="paddle/PP-OCRv4/rec/ch_PP-OCRv4_rec_mobile/ppocr_keys_v1.txt"
+    ;;
+  server)
+    files="onnx/PP-OCRv4/det/ch_PP-OCRv4_det_server.onnx
+onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx
+onnx/PP-OCRv4/rec/ch_PP-OCRv4_rec_server.onnx"
+    # v4 server rec shares the v1 dict published under the mobile path.
+    dict="paddle/PP-OCRv4/rec/ch_PP-OCRv4_rec_mobile/ppocr_keys_v1.txt"
+    ;;
+  v5-mobile)
+    files="onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx
+onnx/PP-OCRv5/cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx
+onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile.onnx"
+    dict="paddle/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile/ppocrv5_dict.txt"
+    ;;
+  v5-server)
+    files="onnx/PP-OCRv5/det/ch_PP-OCRv5_det_server.onnx
+onnx/PP-OCRv5/cls/ch_PP-LCNet_x1_0_textline_ori_cls_server.onnx
+onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_server.onnx"
+    dict="paddle/PP-OCRv5/rec/ch_PP-OCRv5_rec_server/ppocrv5_dict.txt"
+    ;;
+  *) echo "unknown --models tier: $TIER (mobile|server|v5-mobile|v5-server)" >&2; exit 2 ;;
+esac
+
+for m in $files; do
   f=models/$(basename "$m")
-  [ -f "$f" ] || curl -L -o "$f" "$MODEL_SCOPE/$m"
+  [ -f "$f" ] || curl -fsSL -o "$f" "$MODEL_SCOPE/$m"
 done
-cp -n rapidocr-onnx/models/ppocr_keys_v1.txt models/ 2>/dev/null || \
-  curl -L -o models/ppocr_keys_v1.txt "$MODEL_SCOPE/others/ppocr_keys_v1.txt" || true
+cp -n rapidocr-onnx/models/$(basename "$dict") models/ 2>/dev/null || \
+  curl -fsSL -o "models/$(basename "$dict")" "$MODEL_SCOPE/$dict" || true
 
-# ppocr_keys_v1.txt may ship with CRLF endings. Windows text-mode reads
-# strip \r but POSIX builds keep it, which leaks a '\r' into every
-# recognized character's label. Normalize to LF.
-[ -f models/ppocr_keys_v1.txt ] && sed -i 's/\r$//' models/ppocr_keys_v1.txt
+# Dict files may ship with CRLF endings. Windows text-mode reads strip
+# \r but POSIX builds keep it, which leaks a '\r' into every recognized
+# character's label. Normalize all dict files to LF.
+for f in models/*keys*.txt models/*dict*.txt; do
+  [ -f "$f" ] && sed -i 's/\r$//' "$f"
+done
 
-echo "Done. lib/$plat: $(ls $dst)  models: $(ls models)"
+echo "Done. lib/$plat: $(ls $dst)  models[$TIER]: $(ls models)"

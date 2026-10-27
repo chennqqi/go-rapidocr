@@ -29,6 +29,9 @@ type Config struct {
 	// RecModel is the recognition model file name inside ModelDir.
 	RecModel string
 	// KeysFile is the recognition dictionary file name inside ModelDir.
+	// It MUST match RecModel: ppocr_keys_v1.txt for PP-OCRv3/v4,
+	// ppocrv5_dict.txt for PP-OCRv5, <lang>_dict.txt for non-Chinese
+	// rec models. A mismatched dict produces garbage text.
 	KeysFile string
 
 	// NumThreads sets the onnxruntime thread count; 0 lets ORT decide.
@@ -44,14 +47,15 @@ type Config struct {
 	Debug bool
 }
 
-// DefaultConfig returns a Config with upstream default model file names.
+// DefaultConfig returns a Config matching the PP-OCRv4 mobile tier that
+// fetch_assets.sh downloads by default.
 func DefaultConfig() *Config {
 	return &Config{
 		Backend:    BackendAuto,
 		ModelDir:   "models",
-		DetModel:   "ch_PP-OCRv3_det_infer.onnx",
-		ClsModel:   "ch_ppocr_mobile_v2.0_cls_infer.onnx",
-		RecModel:   "ch_PP-OCRv3_rec_infer.onnx",
+		DetModel:   "ch_PP-OCRv4_det_mobile.onnx",
+		ClsModel:   "ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+		RecModel:   "ch_PP-OCRv4_rec_mobile.onnx",
 		KeysFile:   "ppocr_keys_v1.txt",
 		NumThreads: 4,
 	}
