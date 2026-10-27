@@ -1,0 +1,7 @@
+.git
+deps
+lib
+build-clib
+build-clib-linux
+build
+*.exe

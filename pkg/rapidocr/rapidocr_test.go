@@ -8,9 +8,22 @@ import (
 	_ "image/jpeg"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// libDirName returns the platform library directory name.
+func libDirName() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "windows-x64"
+	case "darwin":
+		return "darwin-x64"
+	default:
+		return "linux-x64"
+	}
+}
 
 // testConfig builds a Config pointing at repo-local models and the shared
 // library under lib/. Tests skip when assets are absent.
@@ -27,10 +40,19 @@ func testConfig(t *testing.T) *Config {
 	cfg.ClsModel = "ch_ppocr_mobile_v2.0_cls_mobile.onnx"
 	cfg.RecModel = "ch_PP-OCRv4_rec_mobile.onnx"
 	// Prefer the locally built CLIB (full OcrDetectInput API); fall back to
-	// the upstream prebuilt CLIB (legacy text-only API).
-	libDir := filepath.Join(root, "lib", "windows-x64")
-	for _, name := range []string{"libRapidOcrOnnx.dll", "RapidOcrOnnx.dll"} {
-		p := filepath.Join(libDir, name)
+	// the upstream prebuilt CLIB (legacy text-only API). RAPIDOCR_LIB
+	// overrides the library path (e.g. a fresh build output directory).
+	candidates := []string{os.Getenv("RAPIDOCR_LIB")}
+	libDir := filepath.Join(root, "lib", libDirName())
+	for _, name := range []string{sharedLibName(), "lib" + sharedLibName(), "RapidOcrOnnx.dll"} {
+		candidates = append(candidates, filepath.Join(libDir, name))
+	}
+	candidates = append(candidates, filepath.Join(root, "build-clib-linux", sharedLibName()),
+		filepath.Join(root, "build-clib", sharedLibName()))
+	for _, p := range candidates {
+		if len(p) == 0 {
+			continue
+		}
 		if _, err := os.Stat(p); err == nil {
 			cfg.LibraryPath = p
 			break
@@ -87,7 +109,7 @@ func TestPureGoDetectBytes(t *testing.T) {
 	}
 	// The upstream prebuilt CLIB (legacy OcrDetect API) returns text only;
 	// a locally built CLIB must provide boxes and scores.
-	if strings.HasSuffix(cfg.LibraryPath, "libRapidOcrOnnx.dll") && !structured {
+	if strings.Contains(cfg.LibraryPath, "libRapidOcrOnnx") && !structured {
 		t.Error("structured CLIB loaded but no box/score data returned")
 	}
 }

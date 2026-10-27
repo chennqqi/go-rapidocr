@@ -39,11 +39,19 @@ if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/onnxruntime-static)
     find_package(OnnxRuntime REQUIRED)
     set(ORT_LIBS ${OnnxRuntime_LIBS})
     set(ORT_INCLUDE_DIRS ${OnnxRuntime_INCLUDE_DIRS})
-elseif (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/onnxruntime-win-x64-1.20.1)
-    # Shared mode: official Microsoft onnxruntime release (headers + dll).
+else ()
+    # Shared mode: official Microsoft onnxruntime release (headers + lib).
     # deps/ort-compat remaps the flat release headers to the nested
     # onnxruntime/core/session/ layout upstream sources include.
-    set(ORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/deps/onnxruntime-win-x64-1.20.1)
+    if (WIN32)
+        file(GLOB ORT_CAND deps/onnxruntime-win-x64-*)
+    else ()
+        file(GLOB ORT_CAND deps/onnxruntime-linux-*)
+    endif ()
+    list(GET ORT_CAND 0 ORT_DIR)
+    if (NOT EXISTS ${ORT_DIR})
+        message(FATAL_ERROR "OnnxRuntime not found: place either deps/onnxruntime-static/<plat> or deps/onnxruntime-<plat>-*/")
+    endif ()
     set(ORT_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/deps/ort-compat)
     if (MINGW)
         # MinGW cannot link MSVC import .lib; generate a .dll.a import
@@ -60,20 +68,31 @@ elseif (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/onnxruntime-win-x64-1.20.1)
                 -d ${CMAKE_CURRENT_SOURCE_DIR}/cmake/onnxruntime.def)
         endif ()
         set(ORT_LIBS ${ORT_IMPLIB})
+    elseif (APPLE)
+        set(ORT_LIBS ${ORT_DIR}/lib/libonnxruntime.dylib)
+    elseif (UNIX)
+        # Link the versioned .so directly; set RPATH so it resolves
+        # beside the engine library at runtime.
+        file(GLOB ORT_SO ${ORT_DIR}/lib/libonnxruntime.so.*)
+        list(GET ORT_SO 0 ORT_SO_REAL)
+        set(ORT_LIBS ${ORT_SO_REAL})
+        set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+        set(CMAKE_INSTALL_RPATH "\$ORIGIN")
     else ()
         set(ORT_LIBS ${ORT_DIR}/lib/onnxruntime.lib)
     endif ()
-else ()
-    message(FATAL_ERROR "OnnxRuntime not found: place either deps/onnxruntime-static/<plat> or deps/onnxruntime-win-x64-*/")
 endif ()
 
 # --- OpenCV ---
+# Only seed OpenCV_DIR from the prebuilt deps tree when it exists; otherwise
+# fall back to the toolchain/system package (e.g. apt libopencv-dev,
+# MSYS2 mingw-w64 opencv).
 if (NOT DEFINED OpenCV_DIR)
-    if (APPLE)
+    if (APPLE AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/opencv-static/macos)
         set(OpenCV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/deps/opencv-static/macos/lib/cmake/opencv4)
-    elseif (WIN32 AND NOT MINGW)
+    elseif (WIN32 AND NOT MINGW AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/opencv-static/windows-x64)
         set(OpenCV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/deps/opencv-static/windows-x64)
-    elseif (UNIX)
+    elseif (UNIX AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/opencv-static/linux)
         set(OpenCV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/deps/opencv-static/linux/lib/cmake/opencv4)
     endif ()
 endif ()

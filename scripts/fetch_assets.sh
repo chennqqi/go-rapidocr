@@ -43,4 +43,9 @@ done
 cp -n rapidocr-onnx/models/ppocr_keys_v1.txt models/ 2>/dev/null || \
   curl -L -o models/ppocr_keys_v1.txt "$MODEL_SCOPE/others/ppocr_keys_v1.txt" || true
 
+# ppocr_keys_v1.txt may ship with CRLF endings. Windows text-mode reads
+# strip \r but POSIX builds keep it, which leaks a '\r' into every
+# recognized character's label. Normalize to LF.
+[ -f models/ppocr_keys_v1.txt ] && sed -i 's/\r$//' models/ppocr_keys_v1.txt
+
 echo "Done. lib: $(ls $dst)  models: $(ls models)"

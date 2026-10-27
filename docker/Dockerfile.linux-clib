@@ -1,0 +1,41 @@
+# Builds libRapidOcrOnnx.so (CLIB, full OcrDetectInput API) on Debian and
+# runs the purego Go tests against it inside the container.
+#
+#   docker build -t go-rapidocr-linux -f docker/Dockerfile.linux-clib .
+#   docker run --rm go-rapidocr-linux
+#
+# The built library lands in build-clib-linux/libRapidOcrOnnx.so; copy it
+# out with `docker cp` or a bind mount for distribution.
+FROM golang:1.25-bookworm AS build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake libopencv-dev ca-certificates curl xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Official onnxruntime linux release (flat headers + versioned .so).
+ARG ORT_VERSION=1.20.1
+RUN curl -fsSL -o /tmp/ort.tgz \
+        https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz \
+    && mkdir -p /opt/ort && tar -xzf /tmp/ort.tgz -C /opt/ort \
+    && mv /opt/ort/onnxruntime-linux-x64-${ORT_VERSION} /opt/ort/linux-x64 \
+    && rm /tmp/ort.tgz
+
+WORKDIR /workspace
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Remap flat ORT headers to upstream's nested include layout and build.
+RUN mkdir -p deps/ort-compat/onnxruntime/core/session \
+    && cp /opt/ort/linux-x64/include/*.h deps/ort-compat/onnxruntime/core/session/ \
+    && mkdir -p deps && ln -sfn /opt/ort/linux-x64 deps/onnxruntime-linux-x64 \
+    && cmake -B build-clib-linux -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIB=ON \
+    && cmake --build build-clib-linux -j"$(nproc)" \
+    && cp -d /opt/ort/linux-x64/lib/libonnxruntime.so* build-clib-linux/ \
+    && mkdir -p lib/linux-x64 && cp -d build-clib-linux/libRapidOcrOnnx.so build-clib-linux/libonnxruntime.so* lib/linux-x64/ \
+    && ls -l build-clib-linux/ lib/linux-x64/
+
+# Run the test suite inside the container (covers both cgo and purego).
+ENV LD_LIBRARY_PATH=/workspace/build-clib-linux:/workspace/lib/linux-x64:/opt/ort/linux-x64/lib
+CMD ["go", "test", "./pkg/rapidocr/", "-v"]
