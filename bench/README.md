@@ -16,10 +16,32 @@ doAngle=1`), Windows 11, Ryzen-class CPU, 10 loops after warmup.
 | **Full / wall** | **776 ms** | **858 ms** | **908 ms** | **2132–2679 ms** |
 | Text blocks | 12 | 12 | 12 | 11 |
 
-- Python row uses onnxruntime 1.31.1 (C++/Go use 1.20.1) and differs in
-  output too: it strips spaces/punctuation from English lines and misses
-  the lowest-scoring block, so treat its numbers as a different pipeline
-  sharing the same models rather than a strict apples-to-apples run.
+- **Correctness on `testdata/1.jpg`** (ground truth = the 12 lines
+  visible in the rotated image; the test image is intentionally
+  upside-down to exercise the angle classifier): C++ and Go produce
+  identical, faithful output — all 12 lines with punctuation preserved.
+  Python finds only 11 lines (misses the last, lowest-scoring one),
+  strips all spaces from English text and drops some punctuation — a
+  known postprocessing difference of the Python port.
+- **Correctness on `ch_en_num.jpg`** (upstream `python/tests` asset,
+  their suite expects 18 blocks with their bundled models): both find
+  15. Go/C++ detects the main title 正品促销 and 券后价￥ correctly
+  but misreads 破损就赔→破损京焙 and the flame-styled 直击→高;
+  Python misses the title entirely, misreads 券后价→后价？ and
+  直击→真击， but gets 破损就赔 right. Roughly even; neither is
+  authoritative — the mobile rec model tops out around ~95% character
+  accuracy on stylized text. C++/Go parity proves the Go FFI layer adds
+  zero distortion; a real accuracy metric (CER) needs a labelled
+  dataset, which is out of scope for this smoke comparison.
+- **Why is Python slower if it uses the same ONNX Runtime?** Raw
+  `session.run` timing on the same models/sizes shows the slowdown is
+  almost entirely outside the ONNX kernels:
+  - rec: raw inference ≈15.6 ms/line, but the Python pipeline reports
+    ~157 ms/line — ~140 ms is Python glue (crop/resize/normalize +
+    CTC decode + interpreter overhead) on every line.
+  - det: the pypi onnxruntime 1.31.1 itself runs ~286 ms where the
+    RapidAI-built static ORT 1.20.1 finishes the whole det stage in
+    ~117 ms — a build/backend difference, not a language one.
 - Go FFI overhead vs the same native code is roughly +10–17 % wall time;
   the purego (runtime-loaded dll) and cgo (linked dll) backends are within
   noise of each other.
