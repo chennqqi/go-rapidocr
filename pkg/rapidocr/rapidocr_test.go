@@ -4,6 +4,8 @@ package rapidocr
 
 import (
 	"context"
+	"image"
+	_ "image/jpeg"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,6 +90,38 @@ func TestPureGoDetectBytes(t *testing.T) {
 	if strings.HasSuffix(cfg.LibraryPath, "libRapidOcrOnnx.dll") && !structured {
 		t.Error("structured CLIB loaded but no box/score data returned")
 	}
+}
+
+// TestPureGoDetectImage exercises Detect(image.Image) -> DetectPixels path,
+// covering imageToRGB and the raw-pixel OCR_INPUT branch.
+func TestPureGoDetectImage(t *testing.T) {
+	cfg := testConfig(t)
+	// The legacy path API cannot accept raw pixels directly (it re-encodes
+	// through PNG), so this still works on the old prebuilt CLIB.
+	engine, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer engine.Close()
+
+	f, err := os.Open(filepath.Join("..", "..", "testdata", "1.jpg"))
+	if err != nil {
+		t.Skipf("test image not present: %v", err)
+	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+
+	result, err := engine.Detect(context.Background(), img, nil)
+	if err != nil {
+		t.Fatalf("Detect: %v", err)
+	}
+	if len(result.TextBlocks) == 0 {
+		t.Fatal("expected text blocks, got none")
+	}
+	t.Logf("image path got %d blocks", len(result.TextBlocks))
 }
 
 func TestParamZeroIsValid(t *testing.T) {
