@@ -48,7 +48,7 @@ func testConfig(t *testing.T) *Config {
 	// overrides the library path (e.g. a fresh build output directory).
 	candidates := []string{os.Getenv("RAPIDOCR_LIB")}
 	libDir := filepath.Join(root, "lib", libDirName())
-	for _, name := range []string{sharedLibName(), "lib" + sharedLibName(), "RapidOcrOnnx.dll"} {
+	for _, name := range []string{"lib" + sharedLibName(), sharedLibName(), "RapidOcrOnnx.dll"} {
 		candidates = append(candidates, filepath.Join(libDir, name))
 	}
 	candidates = append(candidates, filepath.Join(root, "build-clib-linux", sharedLibName()),
@@ -217,6 +217,48 @@ func TestPureGoCorruptModel(t *testing.T) {
 		t.Error("expected error for corrupt models")
 	} else {
 		t.Logf("init error: %v", err)
+	}
+}
+
+// TestPureGoCancelledContext verifies ctx is honoured before the FFI call.
+func TestPureGoCancelledContext(t *testing.T) {
+	cfg := testConfig(t)
+	engine, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer engine.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := engine.DetectBytes(ctx, []byte{1, 2, 3, 4}, nil); err == nil {
+		t.Error("expected context.Canceled on a cancelled context")
+	} else if err != context.Canceled {
+		t.Errorf("expected context.Canceled, got %v", err)
+	}
+}
+
+// TestPureGoGarbageImageBytes verifies a native decode/OCR failure surfaces
+// as an error instead of a silent empty result. Skipped on legacy CLIBs
+// (<=1.2.3, text-only API): upstream OcrDetect throws a C++ exception that
+// cannot cross the FFI boundary — the process would die.
+func TestPureGoGarbageImageBytes(t *testing.T) {
+	cfg := testConfig(t)
+	engine, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer engine.Close()
+	if pg, ok := engine.(*puregoEngine); ok && !pg.lib.hasInputAPI {
+		t.Skip("legacy text-only CLIB loaded; exceptions are not survivable")
+	}
+
+	garbage := []byte("this is definitely not a decodable image file")
+	_, err = engine.DetectBytes(context.Background(), garbage, nil)
+	if err == nil {
+		t.Error("expected error on undecodable image bytes")
+	} else {
+		t.Logf("detect error: %v", err)
 	}
 }
 

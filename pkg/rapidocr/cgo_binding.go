@@ -1,4 +1,4 @@
-//go:build cgo && (linux || windows || darwin)
+//go:build cgo && (linux || windows || darwin) && !rapidocr_nocgo
 
 // Package rapidocr CGO binding for Linux, Windows and macOS.
 // Links the statically built RapidOcrOnnx wrapper + onnxruntime + opencv
@@ -139,6 +139,15 @@ func convertResult(res *C.OCR_RESULT) *Result {
 	return out
 }
 
+// cgoLastError returns the C++ message recorded by the safe wrapper.
+func cgoLastError() string {
+	msg := C.rapidocr_last_error()
+	if msg == nil {
+		return ""
+	}
+	return ": " + C.GoString(msg)
+}
+
 // Detect runs OCR on an image.Image by converting it to RGB pixels.
 func (e *cgoEngine) Detect(ctx context.Context, img image.Image, p *Param) (*Result, error) {
 	data, w, h := imageToRGB(img)
@@ -152,6 +161,9 @@ func (e *cgoEngine) DetectBytes(ctx context.Context, data []byte, p *Param) (*Re
 	}
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty image data")
+	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
 	}
 	// The input struct must live in C memory: passing a Go struct that
 	// contains a Go pointer violates the cgo pointer rules.
@@ -167,9 +179,12 @@ func (e *cgoEngine) DetectBytes(ctx context.Context, data []byte, p *Param) (*Re
 	var res C.OCR_RESULT
 	ok := C.rapidocr_detect_input(e.handle, input, &cParam, &res)
 	if ok == 0 {
-		return &Result{}, nil
+		return nil, fmt.Errorf("ocr detect failed%s", cgoLastError())
 	}
 	defer C.OcrFreeResult(&res)
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	return convertResult(&res), nil
 }
 
@@ -183,6 +198,9 @@ func (e *cgoEngine) DetectPixels(ctx context.Context, data []byte, width, height
 	}
 	if len(data) < width*height*channels {
 		return nil, fmt.Errorf("data too short for %dx%dx%d", width, height, channels)
+	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
 	}
 	input := (*C.OCR_INPUT)(C.malloc(C.size_t(unsafe.Sizeof(C.OCR_INPUT{}))))
 	defer C.free(unsafe.Pointer(input))
@@ -198,9 +216,12 @@ func (e *cgoEngine) DetectPixels(ctx context.Context, data []byte, width, height
 	var res C.OCR_RESULT
 	ok := C.rapidocr_detect_input(e.handle, input, &cParam, &res)
 	if ok == 0 {
-		return &Result{}, nil
+		return nil, fmt.Errorf("ocr detect failed%s", cgoLastError())
 	}
 	defer C.OcrFreeResult(&res)
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	return convertResult(&res), nil
 }
 

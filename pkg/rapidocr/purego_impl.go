@@ -280,16 +280,20 @@ func readResult(buf []byte) *Result {
 	return out
 }
 
-// detect runs OcrDetectInput with pinned input data.
-func (e *puregoEngine) detect(data []byte, width, height, channels int, encoded bool, p *Param) (*Result, error) {
+// detect runs OcrDetectInput with pinned input data. The FFI call itself
+// is not interruptible; ctx is honoured before and after it.
+func (e *puregoEngine) detect(ctx context.Context, data []byte, width, height, channels int, encoded bool, p *Param) (*Result, error) {
 	if e.lib == nil || e.ocrH == 0 {
 		return nil, fmt.Errorf("engine closed")
 	}
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty image data")
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	if !e.lib.hasInputAPI {
-		return e.detectLegacy(data, width, height, channels, encoded, p)
+		return e.detectLegacy(ctx, data, width, height, channels, encoded, p)
 	}
 	input := buildInput(data, width, height, channels, encoded)
 	param := buildParam(p)
@@ -305,17 +309,20 @@ func (e *puregoEngine) detect(data []byte, width, height, channels int, encoded 
 	// OCR_INPUT.data points into it.
 	runtime.KeepAlive(data)
 	if ok == 0 {
-		return &Result{}, nil
+		return nil, fmt.Errorf("ocr detect failed%s", e.lib.errSuffix())
 	}
 	out := readResult(result)
 	e.lib.ocrFreeResult(unsafe.Pointer(&result[0]))
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
 // detectLegacy handles upstream prebuilt CLIB libraries (<=1.2.3) that only
 // export the path-based OcrDetect/OcrGetLen/OcrGetResult API. It writes the
 // image to a temporary file and returns text-only results.
-func (e *puregoEngine) detectLegacy(data []byte, width, height, channels int, encoded bool, p *Param) (*Result, error) {
+func (e *puregoEngine) detectLegacy(ctx context.Context, data []byte, width, height, channels int, encoded bool, p *Param) (*Result, error) {
 	imgData := data
 	if !encoded {
 		img := rawToRGBA(data, width, height, channels)
@@ -345,7 +352,10 @@ func (e *puregoEngine) detectLegacy(data []byte, width, height, channels int, en
 	param := buildParam(p)
 	ok := e.lib.ocrDetect(e.ocrH, dir, name, unsafe.Pointer(&param[0]))
 	if ok == 0 {
-		return &Result{}, nil
+		return nil, fmt.Errorf("ocr detect failed")
+	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
 	}
 	n := e.lib.ocrGetLen(e.ocrH)
 	if n <= 1 {
@@ -405,7 +415,7 @@ func (e *puregoEngine) Detect(ctx context.Context, img image.Image, p *Param) (*
 
 // DetectBytes runs OCR on encoded image bytes.
 func (e *puregoEngine) DetectBytes(ctx context.Context, data []byte, p *Param) (*Result, error) {
-	return e.detect(data, 0, 0, 3, true, p)
+	return e.detect(ctx, data, 0, 0, 3, true, p)
 }
 
 // DetectPixels runs OCR on tightly packed raw pixels.
@@ -416,7 +426,7 @@ func (e *puregoEngine) DetectPixels(ctx context.Context, data []byte, width, hei
 	if len(data) < width*height*channels {
 		return nil, fmt.Errorf("data too short for %dx%dx%d", width, height, channels)
 	}
-	return e.detect(data, width, height, channels, false, p)
+	return e.detect(ctx, data, width, height, channels, false, p)
 }
 
 // Close destroys the OCR handle and unloads the library handle record.

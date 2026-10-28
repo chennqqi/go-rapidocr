@@ -74,6 +74,14 @@ func (r *Result) String() string {
 }
 
 // Engine is the OCR engine interface implemented by all backends.
+//
+// The context is honoured before and after the native inference call:
+// a cancelled context returns ctx.Err() without running OCR, and a context
+// cancelled during inference is reported once the call returns. The C++
+// inference itself cannot be aborted mid-flight.
+//
+// A native failure (corrupt image data, engine errors) is returned as an
+// error — an empty *Result with nil error means "no text found" only.
 type Engine interface {
 	// Detect runs OCR on an image.Image.
 	Detect(ctx context.Context, img image.Image, p *Param) (*Result, error)

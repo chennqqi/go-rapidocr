@@ -1,10 +1,22 @@
 package rapidocr
 
 import (
+	"context"
 	"image"
 	"image/draw"
 	"path/filepath"
 )
+
+// checkCtx returns the context error if it is already done. The native
+// inference call itself cannot be interrupted mid-flight, so Detect*
+// checks this before entering the FFI call (fail fast) and again after it
+// returns (surface a cancellation that happened during inference).
+func checkCtx(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Err()
+}
 
 // modelPaths resolves configured model file names against ModelDir.
 func (c *Config) modelPaths() (det, cls, rec, keys string) {

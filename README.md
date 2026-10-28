@@ -47,6 +47,21 @@ for _, b := range result.TextBlocks {
 }
 ```
 
+Semantics:
+
+- `ctx` is checked before and after the native call — a cancelled context
+  returns `ctx.Err()`. The C++ inference itself cannot be aborted
+  mid-flight.
+- Native failures (corrupt image bytes, engine errors) return an `error`
+  with the C++ message attached when the safe-wrapper CLIB is used; an
+  empty `*Result` with `nil` error means "no text found" only.
+
+### Build tags
+
+- `rapidocr_nocgo` — exclude the cgo backend even when `CGO_ENABLED=1`,
+  producing a purego-only binary that does not link the native library
+  (useful for cross-compiles and minimal deployments).
+
 ## Model selection
 
 RapidOCR is a three-model pipeline — det (find text lines), cls (0/180°
