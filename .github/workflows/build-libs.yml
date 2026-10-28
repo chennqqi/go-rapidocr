@@ -136,10 +136,16 @@ jobs:
           curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-osx-${ortarch}-${ORT_VERSION}.tgz" | tar -xz -C deps
       - name: Build libRapidOcrOnnx.dylib
         run: bash scripts/build_clib_macos.sh
+      - name: Stage artifact
+        run: |
+          mkdir -p out-darwin-${{ matrix.arch }}
+          cp build-clib-macos/libRapidOcrOnnx.dylib \
+             build-clib-macos/libonnxruntime*.dylib \
+             out-darwin-${{ matrix.arch }}/
       - uses: actions/upload-artifact@v4
         with:
           name: lib-darwin-${{ matrix.arch }}
-          path: build-clib-macos/
+          path: out-darwin-${{ matrix.arch }}
 
   # On tag pushes (v*), collect every platform build and publish a GitHub
   # release with lib-<os>-<arch>.tar.gz assets that fetch_assets.sh can

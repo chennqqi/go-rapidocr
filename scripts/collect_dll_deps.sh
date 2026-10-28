@@ -9,7 +9,10 @@ set -euo pipefail
 
 SEED=$1
 OUT=$2
-BIN=${3:-/c/msys64/ucrt64/bin}
+# Resolve the MinGW bin dir from the toolchain itself — the msys2 install
+# root differs between machines (/c/msys64 locally, D:\a\_temp\msys64 or
+# /ucrt64 on CI), so never hard-code it.
+BIN=${3:-$(dirname "$(command -v gcc || command -v objdump)")}
 mkdir -p "$OUT"
 
 declare -A seen
