@@ -238,10 +238,10 @@ func TestPureGoCancelledContext(t *testing.T) {
 	}
 }
 
-// TestPureGoGarbageImageBytes verifies a native decode/OCR failure surfaces
-// as an error instead of a silent empty result. Skipped on legacy CLIBs
-// (<=1.2.3, text-only API): upstream OcrDetect throws a C++ exception that
-// cannot cross the FFI boundary — the process would die.
+// TestPureGoGarbageImageBytes verifies a decode/OCR failure surfaces as an
+// error instead of a silent empty result — on legacy CLIBs the Go-side
+// decode pre-validation catches it before the FFI boundary, on safe CLIBs
+// the C++ exception message comes through.
 func TestPureGoGarbageImageBytes(t *testing.T) {
 	cfg := testConfig(t)
 	engine, err := New(cfg)
@@ -249,9 +249,6 @@ func TestPureGoGarbageImageBytes(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	defer engine.Close()
-	if pg, ok := engine.(*puregoEngine); ok && !pg.lib.hasInputAPI {
-		t.Skip("legacy text-only CLIB loaded; exceptions are not survivable")
-	}
 
 	garbage := []byte("this is definitely not a decodable image file")
 	_, err = engine.DetectBytes(context.Background(), garbage, nil)
@@ -259,6 +256,35 @@ func TestPureGoGarbageImageBytes(t *testing.T) {
 		t.Error("expected error on undecodable image bytes")
 	} else {
 		t.Logf("detect error: %v", err)
+	}
+}
+
+// TestPureGoLegacyGarbageImage forces the legacy text-only CLIB
+// (RapidOcrOnnx.dll, <=1.2.3) and feeds it undecodable bytes. The Go-side
+// decode pre-validation must return an error before the FFI call —
+// upstream OcrDetect would otherwise throw and kill the process.
+func TestPureGoLegacyGarbageImage(t *testing.T) {
+	root, _ := filepath.Abs("../..")
+	lib := filepath.Join(root, "lib", libDirName(), "RapidOcrOnnx.dll")
+	if _, err := os.Stat(lib); err != nil {
+		t.Skip("legacy upstream CLIB not present")
+	}
+	cfg := testConfig(t)
+	cfg.LibraryPath = lib
+	engine, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer engine.Close()
+	if pg, ok := engine.(*puregoEngine); ok && pg.lib.hasInputAPI {
+		t.Skip("structured CLIB loaded, not the legacy one")
+	}
+
+	_, err = engine.DetectBytes(context.Background(), []byte("not an image"), nil)
+	if err == nil {
+		t.Error("expected error on undecodable image data")
+	} else {
+		t.Logf("legacy detect error: %v", err)
 	}
 }
 

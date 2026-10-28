@@ -55,6 +55,10 @@ Semantics:
 - Native failures (corrupt image bytes, engine errors) return an `error`
   with the C++ message attached when the safe-wrapper CLIB is used; an
   empty `*Result` with `nil` error means "no text found" only.
+- On the legacy upstream CLIB (<=1.2.3, text-only API) encoded input is
+  decoded and re-encoded to PNG in Go first — undecodable bytes return an
+  error instead of crashing the process through an FFI-crossing C++
+  exception. Accepted formats: PNG/JPEG/GIF/BMP/TIFF/WebP.
 
 ### Build tags
 

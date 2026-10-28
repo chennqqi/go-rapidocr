@@ -323,8 +323,21 @@ func (e *puregoEngine) detect(ctx context.Context, data []byte, width, height, c
 // export the path-based OcrDetect/OcrGetLen/OcrGetResult API. It writes the
 // image to a temporary file and returns text-only results.
 func (e *puregoEngine) detectLegacy(ctx context.Context, data []byte, width, height, channels int, encoded bool, p *Param) (*Result, error) {
-	imgData := data
-	if !encoded {
+	// The legacy lib has no exception-safe wrapper: a C++ throw inside
+	// OcrDetect crosses the FFI boundary and kills the process. Decode in
+	// Go first so bad input fails here, and always feed it a PNG.
+	var imgData []byte
+	if encoded {
+		img, _, err := image.Decode(bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("undecodable image data: %w", err)
+		}
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			return nil, fmt.Errorf("failed to re-encode image for legacy API: %w", err)
+		}
+		imgData = buf.Bytes()
+	} else {
 		img := rawToRGBA(data, width, height, channels)
 		var buf bytes.Buffer
 		if err := png.Encode(&buf, img); err != nil {
