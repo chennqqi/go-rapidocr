@@ -74,15 +74,21 @@ purego paths pass. CMake links the versioned `libonnxruntime.so.1.x.y` with
 
 ### Platform lib builds (GitHub Actions)
 
-`.github/workflows/build-libs.yml` (workflow_dispatch, artifacts only) builds
-the CLIB shared libraries per platform:
+`.github/workflows/build-libs.yml` (push on main touching build inputs +
+manual dispatch, artifacts only; tag pushes also publish to Releases)
+builds the CLIB libraries per platform:
 
-- `linux-x64`: `docker/Dockerfile.linux-clib` inside ubuntu-latest
+- `linux-x64`: manylinux2014 container via `docker/Dockerfile.linux-clib-glibc`
+  → self-contained `.so` (~GLIBC_2.16) + merged `libRapidOcrOnnx.a`
+- `linux-arm64`: manylinux_2_28_aarch64 on ubuntu-24.04-arm → `.so` +
+  shared `libonnxruntime.so*` (glibc 2.28 floor)
 - `windows-x64`: MSYS2 UCRT64 + `scripts/build_clib_mingw.sh`;
   `scripts/collect_dll_deps.sh` recurses `objdump` import tables to stage
   every transitive MinGW dll beside the engine dll
-- `darwin-x64`/`darwin-arm64`: macos-13/macos-15 + `brew install opencv` +
-  `scripts/build_clib_macos.sh`
+- `darwin-x64`/`darwin-arm64`: macos-15-intel/macos-15 + `brew install
+  opencv` + `scripts/build_clib_macos.sh`. NOTE: the dylib links brew's
+  opencv — consumers need `brew install opencv` (no static opencv pack
+  for macOS is wired up yet)
 
 Downloaded artifacts are staged into `lib/<os>-<arch>/`; they are not
 committed (lib binaries are gitignored).
@@ -123,26 +129,31 @@ go run ./cmd/rapidocr-cli -backend purego -lib lib/windows-x64/RapidOcrOnnx.dll 
 `scripts/fetch_static_deps.sh {x64|arm64}` stages RapidAI static dep packs
 into `docker-deps/`; `docker/Dockerfile.linux-clib-glibc` then builds a
 fully self-contained `libRapidOcrOnnx.so` (onnxruntime + opencv + codecs +
-libstdc++ all inside, NEEDED = libc family only). `.github/workflows/
-build-libs.yml` runs this per platform (manual `workflow_dispatch`).
+libstdc++ all inside, NEEDED = libc family only) plus, on x64, a merged
+`libRapidOcrOnnx.a` (engine + every dep .a + libstdc++/libgcc — link it
+with `-l:libRapidOcrOnnx.a`, it satisfies -lRapidOcrOnnx too when the .so
+is absent). `.github/workflows/build-libs.yml` runs this per platform.
 
 ### Linux glibc floor — CRITICAL
 
 - Never use Alpine/musl for Linux builds: musl objects cannot be linked
   into glibc cgo binaries (same rule as the zxing project).
-- Base image: `quay.io/pypa/manylinux_2_28_{x86_64,aarch64}` (AlmaLinux 8,
-  glibc 2.28, gcc-toolset-14, new C++11 ABI). Produced .so references at
-  most GLIBC_2.27 → runs on Ubuntu 18.04+, Debian 10+, RHEL/Rocky/Alma 8+.
-- **glibc 2.17 (manylinux2014/CentOS 7) is NOT possible** with prebuilt
-  deps: its devtoolset gcc hard-codes `_GLIBCXX_USE_CXX11_ABI=0` in
-  c++config.h (command-line `-D` is `#undef`'d), while all RapidAI static
-  packs are new-ABI. Reaching 2.17 would need source-built deps.
-- linux-x64: fully static (`onnxruntime-…-ubuntu-20.04-amd64-static` +
-  `opencv-…-ubuntu-16.04-amd64`).
-- linux-arm64: no glibc static ORT pack exists — uses official
+- linux-x64 base: `quay.io/pypa/manylinux2014_x86_64` (CentOS 7, glibc
+  2.17). Its devtoolset-10 gcc hard-codes `_GLIBCXX_USE_CXX11_ABI=0` in
+  c++config.h ("Ignore any pre-defined value") — but only because the DTS
+  patch sets `_GLIBCXX_USE_DUAL_ABI 0` first. `build_clib_linux.sh`
+  flips that marker to `1` in the container image, so
+  `-D_GLIBCXX_USE_CXX11_ABI=1` takes effect and the new-ABI static packs
+  link. Produced .so references at most ~GLIBC_2.16 — runs on CentOS 7,
+  Ubuntu 14.04+, Debian 8+.
+- linux-arm64 base: `quay.io/pypa/manylinux_2_28_aarch64` (AlmaLinux 8,
+  glibc 2.28). No aarch64 CentOS-7-era toolchain exists, and gcc-toolset
+  there does not force the old ABI, so no header patch is needed.
+- linux-arm64 has no glibc static ORT pack upstream — uses official
   `onnxruntime-linux-aarch64-*.tgz` shared lib (needs only GLIBC_2.27,
   shipped beside the CLIB .so, resolved via `$ORIGIN` rpath) + static
-  opencv ubuntu-16.04-arm64.
+  opencv ubuntu-16.04-arm64. The static .a is therefore only produced
+  on x64.
 - ORT static packs have flat `include/`; CMake generates stub headers under
   `<build>/ort-compat/onnxruntime/core/session/` at configure time.
 

@@ -94,15 +94,27 @@ pacman -S mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-cmake \
 Then point `-lib`/`LibraryPath` at `build-clib/libRapidOcrOnnx.dll`. The
 loader prefers sibling dlls next to it, so no PATH juggling is needed.
 
-### Linux (Docker)
+### Linux (Docker, glibc-frozen release artifacts)
 
 ```bash
-docker build -t go-rapidocr-linux -f docker/Dockerfile.linux-clib .
-docker run --rm go-rapidocr-linux   # runs the full Go test suite inside
+./scripts/fetch_static_deps.sh x64   # or arm64
+docker build --build-arg BASE_IMAGE=quay.io/pypa/manylinux2014_x86_64 \
+    -t go-rapidocr-linux-x64 -f docker/Dockerfile.linux-clib-glibc .
+cid=$(docker create go-rapidocr-linux-x64)
+docker cp "$cid:/artifacts" lib/linux-x64 && docker rm "$cid"
 ```
 
-Produces `build-clib-linux/libRapidOcrOnnx.so` (+ `libonnxruntime.so.1.20.1`)
-inside the image; `lib/linux-x64/` is staged for the cgo link path.
+Produces:
+
+- `libRapidOcrOnnx.so` — self-contained shared lib (onnxruntime + opencv +
+  codecs + libstdc++ inside), needs only ~GLIBC_2.16 (CentOS 7 compatible).
+  Used by the purego backend and as the default cgo link target.
+- `libRapidOcrOnnx.a` — merged static archive (engine + all deps). For
+  cgo fully-static linking, point `CGO_LDFLAGS` at it explicitly:
+  `CGO_LDFLAGS="-L$PWD/lib/linux-x64 -l:libRapidOcrOnnx.a -ldl -lpthread -lrt -lm"`.
+
+linux-arm64 ships `libRapidOcrOnnx.so` + `libonnxruntime.so*` instead
+(no glibc static ORT pack exists upstream; needs GLIBC_2.27/2.28).
 
 ## Status
 
@@ -112,7 +124,8 @@ Verified end-to-end on Windows x64 and Linux x64 (bookworm container):
 - purego backend: same result with `CGO_ENABLED=0`, no C toolchain.
 - Legacy prebuilt CLIB (upstream <=1.2.3): automatic text-only fallback.
 
-Static-library builds for distribution (glibc-floor, macOS, arm64) remain
+Fully-static cgo linking is available on linux-x64 via the merged
+`libRapidOcrOnnx.a` release artifact. macOS/Windows ship shared libs only.
 the next step.
 
 See `AGENTS.md` for architecture and build details.

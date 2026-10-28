@@ -1,20 +1,23 @@
 # glibc-frozen CLIB build: RapidAI static dep packs + old-glibc toolchain.
 #
 #   ./scripts/fetch_static_deps.sh x64        # or arm64
-#   docker build --build-arg BASE_IMAGE=quay.io/pypa/manylinux_2_28_x86_64 \
+#   docker build --build-arg BASE_IMAGE=quay.io/pypa/manylinux2014_x86_64 \
 #       -t go-rapidocr-linux-x64 -f docker/Dockerfile.linux-clib-glibc .
 #   docker run --rm -v "$PWD/out":/out go-rapidocr-linux-x64 \
 #       cp -r /artifacts/. /out/
 #
-# Why manylinux_2_28 (AlmaLinux 8, glibc 2.28)?
-# - manylinux2014 (CentOS 7, glibc 2.17) ships devtoolset gcc configured with
-#   _GLIBCXX_USE_CXX11_ABI=0 *unconditionally* (its c++config.h #undefs the
-#   macro), so it cannot link the new-ABI static dep packs. glibc 2.17 would
-#   require building opencv/onnxruntime from source — not worth it: the
-#   produced .so only references symbols up to GLIBC_2.27 anyway.
+# Base images:
+# - x64:   manylinux2014 (CentOS 7, glibc 2.17). Its devtoolset gcc forces
+#   _GLIBCXX_USE_CXX11_ABI=0 in c++config.h, which cannot link RapidAI's
+#   new-ABI static packs; build_clib_linux.sh flips the DTS
+#   _GLIBCXX_USE_DUAL_ABI marker so the new ABI can be selected. Result:
+#   self-contained .so needing only ~GLIBC_2.16, plus a merged static .a.
+# - arm64: manylinux_2_28 (AlmaLinux 8, glibc 2.28). No aarch64 CentOS-7-era
+#   toolchain exists; 2.28 is the floor (same rule as the zxing project).
+#   ORT ships as a shared lib alongside (needs only GLIBC_2.27).
 # - Never use musl (Alpine): musl objects are incompatible with glibc cgo
 #   binaries (same rule as the zxing project).
-ARG BASE_IMAGE=quay.io/pypa/manylinux_2_28_x86_64
+ARG BASE_IMAGE=quay.io/pypa/manylinux2014_x86_64
 FROM ${BASE_IMAGE}
 SHELL ["/bin/bash", "-c"]
 

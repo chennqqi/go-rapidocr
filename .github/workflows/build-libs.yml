@@ -27,8 +27,11 @@ jobs:
   # libstdc++) are statically linked into a single libRapidOcrOnnx.so, so the
   # artifact is distro-agnostic. Base image is manylinux_2_28 (AlmaLinux 8,
   # glibc 2.28); the produced .so only references up to GLIBC_2.27.
-  # manylinux2014/CentOS 7 cannot be used: its devtoolset gcc forces
-  # _GLIBCXX_USE_CXX11_ABI=0, incompatible with the prebuilt static packs.
+  # manylinux2014 (CentOS 7, glibc 2.17) is usable after all: its devtoolset
+  # forces _GLIBCXX_USE_CXX11_ABI=0 via a _GLIBCXX_USE_DUAL_ABI 0 marker in
+  # c++config.h, which build_clib_linux.sh flips to unlock the new ABI for
+  # the RapidAI static packs. Produces a self-contained .so (~GLIBC_2.16)
+  # plus a merged static .a for cgo.
   linux-x64:
     runs-on: ubuntu-latest
     steps:
@@ -37,9 +40,9 @@ jobs:
           submodules: true
       - name: Fetch static dep packs
         run: bash scripts/fetch_static_deps.sh x64
-      - name: Build libRapidOcrOnnx.so (glibc 2.27 floor)
+      - name: Build libRapidOcrOnnx (glibc 2.17 floor)
         run: |
-          docker build --build-arg BASE_IMAGE=quay.io/pypa/manylinux_2_28_x86_64 \
+          docker build --build-arg BASE_IMAGE=quay.io/pypa/manylinux2014_x86_64 \
               -t go-rapidocr-linux-x64 -f docker/Dockerfile.linux-clib-glibc .
       - name: Export artifacts
         run: |
