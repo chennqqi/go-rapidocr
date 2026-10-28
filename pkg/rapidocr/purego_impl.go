@@ -309,7 +309,13 @@ func (e *puregoEngine) detect(ctx context.Context, data []byte, width, height, c
 	// OCR_INPUT.data points into it.
 	runtime.KeepAlive(data)
 	if ok == 0 {
-		return nil, fmt.Errorf("ocr detect failed%s", e.lib.errSuffix())
+		// Upstream OcrDetectInput returns FALSE both for "no text found"
+		// and for failure. Only the exception path records lastError, so a
+		// failure without a recorded message is a legitimate empty result.
+		if msg := e.lib.errSuffix(); len(msg) > 0 {
+			return nil, fmt.Errorf("ocr detect failed%s", msg)
+		}
+		return &Result{}, nil
 	}
 	out := readResult(result)
 	e.lib.ocrFreeResult(unsafe.Pointer(&result[0]))
@@ -365,7 +371,10 @@ func (e *puregoEngine) detectLegacy(ctx context.Context, data []byte, width, hei
 	param := buildParam(p)
 	ok := e.lib.ocrDetect(e.ocrH, dir, name, unsafe.Pointer(&param[0]))
 	if ok == 0 {
-		return nil, fmt.Errorf("ocr detect failed")
+		// Legacy OcrDetect cannot report errors: a C++ exception would
+		// crash the process rather than return FALSE, so FALSE here means
+		// no text was found (input was already Go-validated).
+		return &Result{}, nil
 	}
 	if err := checkCtx(ctx); err != nil {
 		return nil, err

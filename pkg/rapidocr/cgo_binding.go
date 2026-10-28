@@ -179,7 +179,13 @@ func (e *cgoEngine) DetectBytes(ctx context.Context, data []byte, p *Param) (*Re
 	var res C.OCR_RESULT
 	ok := C.rapidocr_detect_input(e.handle, input, &cParam, &res)
 	if ok == 0 {
-		return nil, fmt.Errorf("ocr detect failed%s", cgoLastError())
+		// FALSE + recorded exception message = real failure; FALSE with
+		// no message = no text found (all invalid-input cases are
+		// pre-validated in Go).
+		if msg := cgoLastError(); len(msg) > 0 {
+			return nil, fmt.Errorf("ocr detect failed%s", msg)
+		}
+		return &Result{}, nil
 	}
 	defer C.OcrFreeResult(&res)
 	if err := checkCtx(ctx); err != nil {
@@ -216,7 +222,10 @@ func (e *cgoEngine) DetectPixels(ctx context.Context, data []byte, width, height
 	var res C.OCR_RESULT
 	ok := C.rapidocr_detect_input(e.handle, input, &cParam, &res)
 	if ok == 0 {
-		return nil, fmt.Errorf("ocr detect failed%s", cgoLastError())
+		if msg := cgoLastError(); len(msg) > 0 {
+			return nil, fmt.Errorf("ocr detect failed%s", msg)
+		}
+		return &Result{}, nil
 	}
 	defer C.OcrFreeResult(&res)
 	if err := checkCtx(ctx); err != nil {

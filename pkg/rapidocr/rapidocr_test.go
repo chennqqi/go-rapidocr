@@ -3,9 +3,11 @@
 package rapidocr
 
 import (
+	"bytes"
 	"context"
 	"image"
 	_ "image/jpeg"
+	"image/png"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -285,6 +287,34 @@ func TestPureGoLegacyGarbageImage(t *testing.T) {
 		t.Error("expected error on undecodable image data")
 	} else {
 		t.Logf("legacy detect error: %v", err)
+	}
+}
+
+// TestPureGoBlankImage verifies that a valid image containing no text
+// returns an empty result without error — upstream OcrDetectInput reports
+// no-text as FALSE, which must not be conflated with a native failure.
+func TestPureGoBlankImage(t *testing.T) {
+	cfg := testConfig(t)
+	engine, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer engine.Close()
+
+	img := image.NewRGBA(image.Rect(0, 0, 400, 200))
+	for i := range img.Pix {
+		img.Pix[i] = 0xFF
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	result, err := engine.DetectBytes(context.Background(), buf.Bytes(), nil)
+	if err != nil {
+		t.Fatalf("blank image should not error, got: %v", err)
+	}
+	if result == nil || len(result.TextBlocks) != 0 {
+		t.Fatalf("expected empty result for blank image, got %+v", result)
 	}
 }
 
