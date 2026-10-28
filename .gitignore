@@ -21,3 +21,4 @@ out-*/
 build-bins/
 rapidocr-cli*.exe
 testdata/*-result.*
+out-*.so
